@@ -59,7 +59,7 @@ module grid_procs
     implicit none
 
     integer         :: i,istat,nloc1,nloc2,eloc1,eloc2
-    character				:: dchar*400
+    character       :: dchar*400,test1,test2
 
     !--------------------------------------------------------------------------!
     ! open grid file
