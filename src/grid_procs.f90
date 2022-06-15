@@ -58,7 +58,7 @@ module grid_procs
   subroutine grid_read
     implicit none
 
-    integer					:: i,istat,nloc1,nloc2,eloc1,eloc2
+    integer         :: i,istat,nloc1,nloc2,eloc1,eloc2
     character				:: dchar*400
 
     !--------------------------------------------------------------------------!
