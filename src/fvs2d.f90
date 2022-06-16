@@ -3,6 +3,7 @@ program fvs2d
   use mainparam
   use input
   use grid_procs
+  use interpolation
   use mpi
   use omp_lib
 
@@ -11,8 +12,8 @@ program fvs2d
 
   integer           :: ierr,errcode
   integer           :: stat(MPI_STATUS_SIZE)
-  
-  
+
+
   !-------------------------------------------------------------------------------
   ! find process ID and how many processes were started
   !-------------------------------------------------------------------------------
@@ -25,8 +26,8 @@ program fvs2d
     write(*,*)'#s of MPI tasks must be equal to 1!'
     call MPI_ABORT(MPI_COMM_WORLD,errcode,ierr)
   endif
-  
-  
+
+
   !--------------------------------------------------------------------------------------------------
   ! number of OMP threads
   !--------------------------------------------------------------------------------------------------
@@ -36,25 +37,28 @@ program fvs2d
   omp_nthreads=omp_get_num_threads()
 !$omp end parallel
   if (omp_nthreads>1) lOMP=.true.
-  
-  
+
+
   !-------------------------------------------------------------------------------
   ! read input file
   !-------------------------------------------------------------------------------
   call input_read
-  
-  
+
+
   !-------------------------------------------------------------------------------
   ! static grid pre-processing
   !-------------------------------------------------------------------------------
   call grid_procs_init
-  
-  
+
+
+  !-------------------------------------------------------------------------------
+  ! interpolation setup
+  !-------------------------------------------------------------------------------
+  call interpolate_init
+
+
   call MPI_FINALIZE(ierr)
   stop 'o.k.'
-  
-  
+
+
 end program fvs2d
-
-
-

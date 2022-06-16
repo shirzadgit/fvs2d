@@ -25,8 +25,8 @@ include ../make.inc
 #----------------------------------------------------------------------------------------
 # Source Files
 #----------------------------------------------------------------------------------------
-OBJS = fvs2d.o 
-MODOBJS =	mainparam.o input.o grid_graph.o grid_procs.o 
+OBJS = fvs2d.o
+MODOBJS =	mainparam.o input.o kdtree2.o grid_graph.o grid_procs.o interpolation.o 
 
 
 #----------------------------------------------------------------------------------------
