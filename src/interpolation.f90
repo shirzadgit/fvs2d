@@ -2,6 +2,8 @@ module interpolation
 
   use grid_procs
 
+  implicit none
+
   real,allocatable,dimension(:),save  :: interp_nodeweight, interp_cellweight
 
 contains
@@ -43,7 +45,7 @@ contains
     allocate(interp_nodeweight(num_nodes), interp_cellweight(nt))
 
     !--------------------------------------------------------------------------!
-    ! Green-Gauss Node Based Interpolation
+    ! Interpolate cell center values (fc) to nodes (fv) 
     !                              _______
     !                             \
     !                              \
