@@ -3,6 +3,8 @@ module gradient
   use grid_procs
   use interpolation
 
+  implicit none
+
   integer,allocatable,save  :: grad_cell2neighbr_num(:,:), grad_neighbr_ptr(:)
   real,allocatable,save     :: grad_ggnb_coef0(:,:), grad_node_weight(:,:,:), grad_neighbhr_weight(:)
 
