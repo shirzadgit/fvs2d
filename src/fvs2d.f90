@@ -4,6 +4,8 @@ program fvs2d
   use input
   use grid_procs
   use interpolation
+  use gradient
+  use test
   use mpi
   use omp_lib
 
@@ -55,6 +57,18 @@ program fvs2d
   ! interpolation setup
   !-------------------------------------------------------------------------------
   call interpolate_init
+
+
+  !-------------------------------------------------------------------------------
+  ! gradient setup
+  !-------------------------------------------------------------------------------
+  call gradient_init
+
+
+  !-------------------------------------------------------------------------------
+  ! test operators
+  !-------------------------------------------------------------------------------
+  call test_init
 
 
   call MPI_FINALIZE(ierr)

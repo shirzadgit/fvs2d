@@ -3,24 +3,20 @@ module grid_procs
   use mainparam, only : iunit_grid
   use input, only     : file_grid
   use grid_graph
-  use kdtree2_module
 
   implicit none
 
   integer,parameter                       :: num_vert_max=3
   integer,save                            :: num_cells, num_nodes, num_edges, num_edges_bndry, num_cells_bndry, num_nodes_bndry
-  real,allocatable,dimension(:,:),save    :: cell_vert, cell_center, cell_dist2vert, cell_dist2edgecenter
-  real,allocatable,dimension(:,:),save    :: edge_center, edge_normal, edge_tangnt, edge_normal_sign
+  real,allocatable,dimension(:,:),save    :: cell_vert, cell_center, edge_center, edge_normal, edge_tangnt, edge_normal_sign
   real,allocatable,dimension(:),save      :: edge_area, cell_area
   integer,allocatable,dimension(:,:),save :: cell2cell, cell2edge, edge2cell, edge2node, cell2node, edgemap
   integer,allocatable,dimension(:),save   :: num_edge_cell, num_vert_edge, num_vert_cell
-  !integer,allocatable,dimension(:),save   :: node2nodeptr, node2node, node2edge, node2cell, node2cellptr
-  integer,allocatable,dimension(:),save   :: node2cell_ntot, node2cell_ptr, node2cell
+  integer,allocatable,dimension(:),save   :: node2nodeptr, node2node, node2edge, node2cell, node2cellptr
   integer,allocatable,dimension(:),save   :: cells_bndry_ptr, edges_bndry_ptr, nodes_bndry_ptr
-  type(kdtree2), pointer,save             :: tree_cellcntr, tree_cellvert
 
-contains
 
+  contains
 
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
@@ -49,7 +45,7 @@ contains
     !--------------------------------------------------------------------------!
     ! check grid and computed properties
     !--------------------------------------------------------------------------!
-    !call grid_check
+    call grid_check
 
 
     return
@@ -62,9 +58,8 @@ contains
   subroutine grid_read
     implicit none
 
-    integer             :: i,istat,nloc1,nloc2,eloc1,eloc2
-    real,allocatable    :: rwrk2d(:,:)
-    character           :: dchar*400
+    integer         :: i,istat,nloc1,nloc2,eloc1,eloc2
+    character       :: dchar*400
 
     !--------------------------------------------------------------------------!
     ! open grid file
@@ -107,22 +102,10 @@ contains
 
 
     !--------------------------------------------------------------------------!
-    ! allocate and read number of edges/vertices per cell
+    ! allocate and read number of edges per cell
     !--------------------------------------------------------------------------!
     allocate(num_vert_cell(num_cells))
     num_vert_cell(:)=num_vert_max
-
-
-    !--------------------------------------------------------------------------!
-    ! initialize k-d tree based on cell nodes/vertices
-    !--------------------------------------------------------------------------!
-    allocate(rwrk2d(2,num_nodes))
-    do i=1,num_nodes
-      rwrk2d(1:2,i)=cell_vert(i,1:2)
-    enddo
-    tree_cellvert => kdtree2_create(rwrk2d,sort=.true.,rearrange=.true.)
-    deallocate(rwrk2d)
-
 
     close(iunit_grid)
 
@@ -210,17 +193,14 @@ contains
   subroutine grid_props
     implicit none
 
-    integer                           :: ic,ic1,ic2, ie,ie1,ie2, iv,iv1,iv2, in,in1,in2, nt,i,j,dum1,dum2
-    integer,allocatable               :: iwrk1d(:), iwrk2d(:,:)
-    real                              :: tx,ty,xc,yc,dx,dy, vol,xf,af,nx, r(2)
-    real,allocatable                  :: rwrk2d(:,:)
-    type(kdtree2_result),allocatable	:: fnearest(:)
-    integer                           :: num_nearests
+    integer             :: ic,ic1,ie,ie1,iv,iv1,iv2,nt,i,j,dum1,dum2
+    integer,allocatable :: iwrk1d(:)
+    real                :: tx,ty,xc,yc,dx,dy, vol,xf,af,nx
 
     !--------------------------------------------------------------------------!
     ! allocation
     !--------------------------------------------------------------------------!
-    allocate(cell_center(num_cells,2), cell_area(num_cells), cell_dist2vert(num_cells,num_vert_max))
+    allocate(cell_center(num_cells,2), cell_area(num_cells))
     allocate(edge_center(num_edges,2), edge_area(num_edges))
     allocate(edge_normal(num_edges,2), edge_tangnt(num_edges,2), edge_normal_sign(num_cells,num_vert_max) )
 
@@ -382,121 +362,32 @@ contains
         cell_area(ic) = vol
     enddo
 
-
-    !--------------------------------------------------------------------------!
-    ! compute distance between cell center and cell vertices
-    !--------------------------------------------------------------------------!
-    do ic=1,num_cells
-      do iv=1,num_vert_cell(ic)
-        in=cell2node(ic,iv)
-        dx = cell_vert(in,1) - cell_center(ic,1)
-        dy = cell_vert(in,2) - cell_center(ic,2)
-        cell_dist2vert(ic,iv)=dsqrt (dx**2 + dy**2)
-      enddo
-    enddo
-
-
-    !--------------------------------------------------------------------------!
-    ! compute distance between cell center and edge center
-    !--------------------------------------------------------------------------!
-    do ic=1,num_cells
-      do iv=1,num_vert_cell(ic)
-        in=cell2node(ic,iv)
-        !dx = cell_vert(in,1) - cell_center(ic,1)
-        !dy = cell_vert(in,2) - cell_center(ic,2)
-        !cell_dist2edgecenter(ic,iv)=dsqrt (dx**2 + dy**2)
-      enddo
-    enddo
-
-
-    !--------------------------------------------------------------------------!
-    ! initialize k-d tree based on cell centers
-    !--------------------------------------------------------------------------!
-    allocate(rwrk2d(2,num_cells))
-    do i=1,num_cells
-      rwrk2d(1:2,i)=cell_center(i,1:2)
-    enddo
-    tree_cellcntr => kdtree2_create(rwrk2d,sort=.true.,rearrange=.true.)
-    deallocate(rwrk2d)
-
-
-    !--------------------------------------------------------------------------!
-    ! determine number of surrounding cells of each node
-    !--------------------------------------------------------------------------!
-    allocate(node2cell_ntot(num_nodes))
-    node2cell_ntot(:) = 0
-    do ic=1,num_cells
-      do iv=1,num_vert_cell(ic)
-        iv1=cell2node(ic,iv)
-        node2cell_ntot(iv1) = node2cell_ntot(iv1) + 1
-      enddo
-    enddo
-
-
-    !--------------------------------------------------------------------------!
-    ! compute pointer and number of cells surrounding each node
-    ! step-1: find "num_nearests" cell centers w.r.t node "iv"
-    ! step-2: check if each found cell has the same node "iv"
-    ! do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
-    !    ic=node2cell(i) ---> return cell numbers surrounding node "iv"
-    ! enddo
-    !--------------------------------------------------------------------------!
-    num_nearests=10
-    allocate(fnearest(num_nearests))
-    allocate(iwrk1d(num_nodes),iwrk2d(num_nodes,12))
-    iwrk2d(:,:)=0
-    iwrk1d(:)=0
-    do ic=1,num_cells
-      do in=1,num_vert_cell(ic)
-        nt=0
-        iv=cell2node(ic,in)
-        r(1:2)=cell_vert(iv,1:2)
-        if (iwrk1d(iv)==0) then
-          call kdtree2_n_nearest(tp=tree_cellcntr,qv=r,nn=num_nearests,results=fnearest)
-          do i=1,num_nearests
-            ic1=fnearest(i)%idx
-            if (ic1==ic) then
-              nt=nt+1
-              iwrk2d(iv,nt)=ic1
-            elseif (cell2node(ic1,1)==iv .or. cell2node(ic1,2)==iv .or. cell2node(ic1,3)==iv) then
-              nt=nt+1
-              iwrk2d(iv,nt)=ic1
-            endif
-          enddo
-          iwrk1d(iv)=1
-        endif
-      enddo
-    enddo
-
-    do i=1,num_nodes
-      nt=0
-      do j=1,num_nearests
-        if (iwrk2d(i,j)>0) then
-          nt=nt+1
-        endif
-      enddo
-      if (node2cell_ntot(i)/=nt) then
-        write(*,*) 'check number of neighbours',i
-      endif
-    enddo
-
-    nt=sum(node2cell_ntot)
-    allocate(node2cell_ptr(num_nodes), node2cell(nt))
-    node2cell_ptr(1)=1
-    do i=2,num_nodes
-      node2cell_ptr(i) = node2cell_ptr(i-1) + node2cell_ntot(i-1)
-    enddo
-
-    do i=1,num_nodes
-      nt=0
-      do j=node2cell_ptr(i), node2cell_ptr(i) + node2cell_ntot(i) - 1
-        nt=nt+1
-        if (iwrk2d(i,nt)>0) node2cell(j)=iwrk2d(i,nt)
-      enddo
-    enddo
-    deallocate(iwrk1d, iwrk2d)
-
     return
   end subroutine grid_props
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine grid_check
+    implicit none
+    integer             :: ic,in,ie,i,j,n1,nt,iv
+    integer,allocatable :: iwrk1d(:)
+    real                :: vol
+
+    write(*,*)
+    write(*,'(a,i0)') 'number of nodes: ',num_nodes
+    write(*,'(a,i0)') 'number of cells: ',num_cells
+    write(*,'(a,i0)') 'number of edges: ',num_edges
+    write(*,'(a,i0)') 'number of bondary nodes: ',num_nodes_bndry
+    write(*,'(a,i0)') 'number of bondary edges: ',num_edges_bndry
+    write(*,'(a,i0)') 'number of bondary cells: ',num_cells_bndry
+    write(*,'(a,en20.11)') 'min cell volume: ',minval(cell_area)
+    write(*,'(a,en20.11)') 'max cell volume: ',maxval(cell_area)
+    write(*,*)
+
+    return
+  end subroutine grid_check
+
 
 end module grid_procs
