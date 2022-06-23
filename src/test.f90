@@ -360,46 +360,46 @@ contains
 end module test
 
 
-do ic=1,num_cells
-  nt=0;
-  do in=1,num_vert_cell(ic)
-    iv=cell2node(ic,in)
-    nt = nt + node2cell_ntot(iv)
-  enddo
-  allocate(tmp(nt))
-
-  tmp(:)=0
-  nt=0
-  do in=1,num_vert_cell(ic)
-    iv=cell2node(ic,in)
-    do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
-      ic1=node2cell(i)
-      nt=nt+1
-      tmp(nt)=ic1
-    enddo
-
-    i=0
-    min_val = minval(tmp)-1
-    max_val = maxval(tmp)
-    do while (min_val<max_val)
-        i = i+1
-        min_tmp = minval(tmp, mask=val>min_tmp)
-        unique(i) = min_tmp
-    enddo
-    allocate(final(i), source=unique(1:i))
-    tmp
-
-
-    call unique (tmp)
-
-
-    do iv=1,num_vert_cell(ic)
-      if (in==cell2node(ic,iv)) then
-        d=cell_dist2vert(ic,iv)
-        dt=dt+1.d0/d
-        interp_cellweight(i)=1.0/d
-      endif
-    enddo
-  enddo
-  interp_nodeweight(in)=1.d0/dt;
-enddo
+! do ic=1,num_cells
+!   nt=0;
+!   do in=1,num_vert_cell(ic)
+!     iv=cell2node(ic,in)
+!     nt = nt + node2cell_ntot(iv)
+!   enddo
+!   allocate(tmp(nt))
+!
+!   tmp(:)=0
+!   nt=0
+!   do in=1,num_vert_cell(ic)
+!     iv=cell2node(ic,in)
+!     do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
+!       ic1=node2cell(i)
+!       nt=nt+1
+!       tmp(nt)=ic1
+!     enddo
+!
+!     i=0
+!     min_val = minval(tmp)-1
+!     max_val = maxval(tmp)
+!     do while (min_val<max_val)
+!         i = i+1
+!         min_tmp = minval(tmp, mask=val>min_tmp)
+!         unique(i) = min_tmp
+!     enddo
+!     allocate(final(i), source=unique(1:i))
+!     tmp
+!
+!
+!     call unique (tmp)
+!
+!
+!     do iv=1,num_vert_cell(ic)
+!       if (in==cell2node(ic,iv)) then
+!         d=cell_dist2vert(ic,iv)
+!         dt=dt+1.d0/d
+!         interp_cellweight(i)=1.0/d
+!       endif
+!     enddo
+!   enddo
+!   interp_nodeweight(in)=1.d0/dt;
+! enddo
