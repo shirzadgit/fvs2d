@@ -45,7 +45,7 @@ contains
     allocate(interp_nodeweight(num_nodes), interp_cellweight(nt))
 
     !--------------------------------------------------------------------------!
-    ! Interpolate cell center values (fc) to nodes (fv) 
+    ! Interpolate cell center values (fc) to nodes (fv)
     !                              _______
     !                             \
     !                              \
@@ -83,7 +83,6 @@ contains
 
     real,intent(in)   :: fc(num_cells)
     real,intent(out)  :: fv(num_nodes)
-    !character(len=*)  :: interp_type
     integer           :: in,ic,i
 
     fv(:)=0.d0
