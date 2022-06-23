@@ -17,6 +17,11 @@ contains
   subroutine test_init
     implicit none
 
+    ! integer             :: nt,nt1,nt2, ic,ic1, in, iv, min_tmp, max_tmp, i, iptr
+    ! integer,allocatable :: cell_neighbr_nn_num(:), cell_neighbr_nn_ptr(:)
+    !
+    ! integer,allocatable :: tmp(:), tmp_unq(:), iwrk1(:,:), iwrk2(:), iwrk3(:)
+    !
     allocate(fve(num_nodes), fce(num_cells), dfve(num_nodes,2), dfce(num_cells,2))
 
     call test_analytic
@@ -26,6 +31,120 @@ contains
     call test_interpolation
 
     call test_gradient
+    !
+    ! allocate(cell_neighbr_nn_num(num_cells))
+    !
+    ! !-- step 2: determine number of neighbourig cells for each node of a cell, excluding the donor cell
+    ! allocate(iwrk1(num_cells,num_vert_max))
+    ! iwrk1(:,:) = 0
+    ! do ic=1,num_cells
+    !   do in=1,num_vert_cell(ic)
+    !     iv=cell2node(ic,in)
+    !
+    !     nt=0
+    !     do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
+    !       ic1=node2cell(i)
+    !       if (ic/=ic1) nt=nt+1
+    !     end do
+    !     iwrk1(ic,in)=nt
+    !   end do
+    ! end do
+    !
+    !
+    ! !--
+    ! nt=0;
+    ! do ic=1,num_cells
+    !   do in=1,num_vert_cell(ic)
+    !     iv=cell2node(ic,in)
+    !     do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
+    !       ic1=node2cell(i)
+    !       if (ic/=ic1) nt=nt+1
+    !     end do
+    !   end do
+    ! end do
+    !
+    ! !----
+    ! allocate(iwrk2(nt), iwrk3(nt))
+    ! iwrk2(:)=0
+    ! nt=0;
+    ! do ic=1,num_cells
+    !   do in=1,num_vert_cell(ic)
+    !     iv=cell2node(ic,in)
+    !
+    !     do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
+    !       ic1=node2cell(i)
+    !       if (ic/=ic1) then
+    !         nt=nt+1
+    !         iwrk2(nt) = ic1
+    !       endif
+    !     end do
+    !   end do
+    ! end do
+    !
+    ! !---
+    ! iwrk3(:)=0
+    ! nt1=0
+    ! nt2=0
+    ! do ic=1,num_cells
+    !   nt=sum(iwrk1(ic,:)) !grad_cell2neighbr_num(ic,1) + grad_cell2neighbr_num(ic,2) + grad_cell2neighbr_num(ic,3); !write(*,*) 'nt=',nt
+    !   allocate(tmp(nt), tmp_unq(nt))
+    !   tmp(:)=0
+    !   nt=0
+    !   do in=1,num_vert_cell(ic)
+    !     do i=1,iwrk1(ic,in)
+    !       nt=nt+1
+    !       nt1=nt1+1
+    !       tmp(nt) = iwrk2(nt1)
+    !     enddo
+    !   enddo
+    !
+    !   !do in=1,nt
+    !   !  write(*,*) in,tmp(in)
+    !   !enddo
+    !
+    !   nt=0
+    !   min_tmp = minval(tmp)-1
+    !   max_tmp = maxval(tmp)
+    !   do while (min_tmp<max_tmp)
+    !     nt = nt+1
+    !     !nt2= nt2+1
+    !     min_tmp = minval(tmp, mask=tmp>min_tmp)
+    !     tmp_unq(nt) = min_tmp
+    !   enddo
+    !   tmp(1:nt)=tmp_unq(1:nt)
+    !
+    !   cell_neighbr_nn_num(ic) = nt
+    !   do i=1,nt
+    !     nt2=nt2+1
+    !     iwrk3(nt2) = tmp(i)
+    !   enddo
+    !
+    !   !write(*,*)
+    !   !do in=1,nt
+    !   !  write(*,*) in,tmp(in)
+    !   !enddo
+    !   !pause
+    !
+    !   deallocate(tmp,tmp_unq)
+    ! enddo
+    !
+    ! allocate(cell_neighbr_nn_ptr(nt2))
+    ! do i=1,nt2
+    !   cell_neighbr_nn_ptr(i) = iwrk3(i)
+    ! enddo
+    !
+    ! nt=0
+    ! do ic=1,10 !num_cells
+    !   ! do i=1,cell_neighbr_nn_num(ic-1)
+    !   !   nt=nt+1
+    !   ! enddo
+    !   write(*,*)
+    !   do iptr=nt+1,nt+cell_neighbr_nn_num(ic)
+    !     ic1=cell_neighbr_nn_ptr(iptr)
+    !     write(*,*) ic,ic1
+    !   enddo
+    !   nt=nt+cell_neighbr_nn_num(ic)
+    ! enddo
 
 
     return
@@ -39,7 +158,7 @@ contains
   subroutine test_grid
     implicit none
 
-    integer             :: ic,ic1,ic2, in,in1,in2, ie,ie1,ie2, i,j,n1,nt,iv,iv1,iv2, num_nearests
+    integer             :: ic,ic1,ic2, in,in1,in2, ie,ie1,ie2, i,j,n1,nt,iv,iv1,iv2, num_nearests, iptr
     integer,allocatable :: iwrk1d(:),iwrk2d(:,:)
     real,allocatable    :: fc(:),fv(:),fv_interp(:) !!, interp_ggnb_cellweight(:), interp_ggnb_nodeweight(:)
     real                :: vol, r(2), d,dt,xc,yc
@@ -55,7 +174,7 @@ contains
     write(*,'(a,en20.11)') 'min cell volume: ',minval(cell_area)
     write(*,'(a,en20.11)') 'max cell volume: ',maxval(cell_area)
     write(*,*)
-    return
+    !return
 
     do i=1,num_edges_bndry
       ie=edges_bndry_ptr(i)
@@ -68,6 +187,54 @@ contains
       endif
     enddo
 
+    open(100,file='neighbor.plt')
+    nt=0
+    do ic=1,20
+      write(100,'(a)') 'VARIABLES ="X", "Y"'
+      write(100,*) 'zone i=',1, ', j=1, f=point'
+      write(100,*) cell_center(ic,1),cell_center(ic,2)
+
+      write(100,'(a)') 'VARIABLES ="X", "Y"'
+      write(100,*) 'zone i=',cell_neighbr_nn_num(ic), ', j=1, f=point'
+      do iptr=nt+1,nt+cell_neighbr_nn_num(ic)
+        ic1=cell_neighbr_nn_ptr(iptr)
+        write(100,*) cell_center(ic1,1),cell_center(ic1,2)
+        ! do in=1,3
+        !   iv=cell2node(ic1,in)
+        !   write(100,*) cell_vert(iv,1),cell_vert(iv,2)
+        ! enddo
+      enddo
+      nt=nt+cell_neighbr_nn_num(ic)
+      write(100,*)
+    enddo
+    return
+
+      ! nt=0
+      ! do ic=1,10 !num_cells
+      !   write(*,*)
+      !   do iptr=nt+1,nt+cell_neighbr_nn_num(ic)
+      !     ic1=cell_neighbr_nn_ptr(iptr)
+      !     write(*,*) ic,ic1
+      !   enddo
+      !   nt=nt+cell_neighbr_nn_num(ic)
+      ! enddo
+
+
+    !   do i=node2cell_ptr(in), node2cell_ptr(in) + node2cell_ntot(in) - 1
+    !     ic=node2cell(i)
+    !     if (ic>0) then
+    !       write(100,'(a)') ' '
+    !       write(100,'(a)') 'TITLE ="grid"'
+    !       write(100,'(a)') 'VARIABLES ="X", "Y"'
+    !       write(100,'(a)') 'ZONE T="VOL_MIXED",N= 3, E=1, ET=TRIANGLE F=FEPOINT'
+    !       do j=1,3
+    !         write(100,*) cell_vert( cell2node(ic,j) ,1),cell_vert( cell2node(ic,j) ,2)
+    !       enddo
+    !       write(100,*) 1,2,3 !cell2node(ic,1),cell2node(ic,2),cell2node(ic,3)
+    !     endif
+    !   enddo
+    ! enddo
+    ! close(100)
 
 !    do ic=1,num_cells
 !      xc=cell_center(ic,1)
@@ -358,48 +525,3 @@ contains
 
 
 end module test
-
-
-! do ic=1,num_cells
-!   nt=0;
-!   do in=1,num_vert_cell(ic)
-!     iv=cell2node(ic,in)
-!     nt = nt + node2cell_ntot(iv)
-!   enddo
-!   allocate(tmp(nt))
-!
-!   tmp(:)=0
-!   nt=0
-!   do in=1,num_vert_cell(ic)
-!     iv=cell2node(ic,in)
-!     do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
-!       ic1=node2cell(i)
-!       nt=nt+1
-!       tmp(nt)=ic1
-!     enddo
-!
-!     i=0
-!     min_val = minval(tmp)-1
-!     max_val = maxval(tmp)
-!     do while (min_val<max_val)
-!         i = i+1
-!         min_tmp = minval(tmp, mask=val>min_tmp)
-!         unique(i) = min_tmp
-!     enddo
-!     allocate(final(i), source=unique(1:i))
-!     tmp
-!
-!
-!     call unique (tmp)
-!
-!
-!     do iv=1,num_vert_cell(ic)
-!       if (in==cell2node(ic,iv)) then
-!         d=cell_dist2vert(ic,iv)
-!         dt=dt+1.d0/d
-!         interp_cellweight(i)=1.0/d
-!       endif
-!     enddo
-!   enddo
-!   interp_nodeweight(in)=1.d0/dt;
-! enddo
