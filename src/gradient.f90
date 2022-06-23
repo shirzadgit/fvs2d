@@ -58,7 +58,12 @@ contains
       call grad_ggcb(fc,dfc)
 
     elseif (lgrad_lsq) then
-      call grad_lsq (fc,dfc)
+      if (lgrad_lsq_fn1) then
+        call grad_lsq_fn1(fc,dfc)
+        
+      elseif (lgrad_lsq_nn) then
+        call grad_lsq_nn (fc,dfc)
+      endif
 
     else
       write(*,*) 'error: Green-Gauss node-based and cell-based are only implemented!'
