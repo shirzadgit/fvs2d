@@ -1,5 +1,6 @@
 module test
 
+  use input
   use grid_procs
   use interpolation
   use gradient
@@ -249,11 +250,14 @@ contains
     allocate(f(num_cells),fxv(num_nodes), fyv(num_nodes), df(num_cells,2))
 
 
-    call gradient_cellcntr('ggcb',fce,df)
+!    call gradient_cellcntr('ggcb',fce,df)
+!    call interpolate_cellcntr2node(df(1:num_cells,1),fxv)
+!    call interpolate_cellcntr2node(df(1:num_cells,2),fyv)
+
+    call gradient_cellcntr(fce,df)
     call interpolate_cellcntr2node(df(1:num_cells,1),fxv)
     call interpolate_cellcntr2node(df(1:num_cells,2),fyv)
-
-    fout='grad_num.plt'
+    fout='gradient_lsq.plt'
     allocate(fw(num_nodes,2))
     fw(:,1)=fxv(:)
     fw(:,2)=fyv(:)
@@ -262,7 +266,7 @@ contains
 
     call interpolate_cellcntr2node(dfce(1:num_cells,1),fxv)
     call interpolate_cellcntr2node(dfce(1:num_cells,2),fyv)
-    fout='grad_exc.plt'
+    fout='gradient_exact.plt'
     fw(:,1)=fxv(:)
     fw(:,2)=fyv(:)
     call test_tecplot(fout,2,fw)
@@ -323,11 +327,16 @@ contains
     implicit none
 
     integer :: ic,in
-    real    :: ax,ay, xc,yc
+    real    :: ax,ay, xc,yc, xmin,xmax, ymin,ymax
 
+    xmin=minval(cell_vert(:,1))
+    xmax=maxval(cell_vert(:,1))
+    ax=10.d0*acos(-1.d0)/(xmax-xmin)
 
-    ax=8.d0
-    ay=4.d0
+    ymin=minval(cell_vert(:,2))
+    ymax=maxval(cell_vert(:,2))
+    ay=10.d0*acos(-1.d0)/(ymax-ymin)
+
     do ic=1,num_cells
       xc=cell_center(ic,1)
       yc=cell_center(ic,2)
@@ -349,3 +358,48 @@ contains
 
 
 end module test
+
+
+do ic=1,num_cells
+  nt=0;
+  do in=1,num_vert_cell(ic)
+    iv=cell2node(ic,in)
+    nt = nt + node2cell_ntot(iv)
+  enddo
+  allocate(tmp(nt))
+
+  tmp(:)=0
+  nt=0
+  do in=1,num_vert_cell(ic)
+    iv=cell2node(ic,in)
+    do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
+      ic1=node2cell(i)
+      nt=nt+1
+      tmp(nt)=ic1
+    enddo
+
+    i=0
+    min_val = minval(tmp)-1
+    max_val = maxval(tmp)
+    do while (min_val<max_val)
+        i = i+1
+        min_tmp = minval(tmp, mask=val>min_tmp)
+        unique(i) = min_tmp
+    enddo
+    allocate(final(i), source=unique(1:i))
+    tmp
+
+
+    call unique (tmp)
+
+
+    do iv=1,num_vert_cell(ic)
+      if (in==cell2node(ic,iv)) then
+        d=cell_dist2vert(ic,iv)
+        dt=dt+1.d0/d
+        interp_cellweight(i)=1.0/d
+      endif
+    enddo
+  enddo
+  interp_nodeweight(in)=1.d0/dt;
+enddo
