@@ -20,6 +20,12 @@ module grid_procs
   integer,allocatable,dimension(:),save   :: cells_bndry_ptr, edges_bndry_ptr, nodes_bndry_ptr
   type(kdtree2), pointer,save             :: tree_cellcntr, tree_cellvert
 
+  !-- cell neighbors
+  integer,allocatable,save                :: cell_neighbr_fn1_num(:), cell_neighbr_fn1_ptr(:)
+  integer,allocatable,save                :: cell_neighbr_fn2_num(:), cell_neighbr_fn2_ptr(:)
+  integer,allocatable,save                :: cell_neighbr_nn_num (:), cell_neighbr_nn_ptr (:)
+
+
 contains
 
 
@@ -46,6 +52,11 @@ contains
     !--------------------------------------------------------------------------!
     call grid_props
 
+
+    !--------------------------------------------------------------------------!
+    ! compute grid properties (erea, normal, etc.)
+    !--------------------------------------------------------------------------!
+    call grid_cell_neighbr_nn
 
     !--------------------------------------------------------------------------!
     ! check grid and computed properties
@@ -528,5 +539,121 @@ contains
 
     return
   end subroutine grid_props
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine grid_cell_neighbr_nn
+    implicit none
+
+    integer             :: nt,nt1,nt2, ic,ic1, in, iv, min_tmp, max_tmp, i, iptr
+    integer,allocatable :: tmp(:), tmp_unq(:), iwrk1(:,:), iwrk2(:), iwrk3(:)
+
+
+    allocate(cell_neighbr_nn_num(num_cells))
+
+    !-- step 1: determine number of neighbourig cells for each node of a cell, excluding the donor cell
+    allocate(iwrk1(num_cells,num_vert_max))
+    iwrk1(:,:) = 0
+    do ic=1,num_cells
+      do in=1,num_vert_cell(ic)
+        iv=cell2node(ic,in)
+
+        nt=0
+        do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
+          ic1=node2cell(i)
+          if (ic/=ic1) nt=nt+1
+        end do
+        iwrk1(ic,in)=nt
+      end do
+    end do
+
+
+    !-- step 2: get total dimension for allocation
+    nt=0;
+    do ic=1,num_cells
+      do in=1,num_vert_cell(ic)
+        iv=cell2node(ic,in)
+        do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
+          ic1=node2cell(i)
+          if (ic/=ic1) nt=nt+1
+        end do
+      end do
+    end do
+
+    !--- step 3: set cell neighbors in 1d array (there will dublicates for each cell)
+    allocate(iwrk2(nt), iwrk3(nt))
+    iwrk2(:)=0
+    nt=0;
+    do ic=1,num_cells
+      do in=1,num_vert_cell(ic)
+        iv=cell2node(ic,in)
+
+        do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
+          ic1=node2cell(i)
+          if (ic/=ic1) then
+            nt=nt+1
+            iwrk2(nt) = ic1
+          endif
+        end do
+      end do
+    end do
+
+    !--- step 4: remove duplicates
+    iwrk3(:)=0
+    nt1=0
+    nt2=0
+    do ic=1,num_cells
+      nt=sum(iwrk1(ic,:))
+      allocate(tmp(nt), tmp_unq(nt))
+      tmp(:)=0
+      nt=0
+      do in=1,num_vert_cell(ic)
+        do i=1,iwrk1(ic,in)
+          nt=nt+1
+          nt1=nt1+1
+          tmp(nt) = iwrk2(nt1)
+        enddo
+      enddo
+
+      nt=0
+      min_tmp = minval(tmp)-1
+      max_tmp = maxval(tmp)
+      do while (min_tmp<max_tmp)
+        nt = nt+1
+        min_tmp = minval(tmp, mask=tmp>min_tmp)
+        tmp_unq(nt) = min_tmp
+      enddo
+      tmp(1:nt)=tmp_unq(1:nt)
+
+      cell_neighbr_nn_num(ic) = nt
+      do i=1,nt
+        nt2=nt2+1
+        iwrk3(nt2) = tmp(i)
+      enddo
+
+      deallocate(tmp,tmp_unq)
+    enddo
+
+    !-- step final:
+    allocate(cell_neighbr_nn_ptr(nt2))
+    do i=1,nt2
+      cell_neighbr_nn_ptr(i) = iwrk3(i)
+    enddo
+
+    ! nt=0
+    ! do ic=1,10 !num_cells
+    !   write(*,*)
+    !   do iptr=nt+1,nt+cell_neighbr_nn_num(ic)
+    !     ic1=cell_neighbr_nn_ptr(iptr)
+    !     write(*,*) ic,ic1
+    !   enddo
+    !   nt=nt+cell_neighbr_nn_num(ic)
+    ! enddo
+    deallocate(iwrk1, iwrk2, iwrk3)
+
+    return
+  end subroutine grid_cell_neighbr_nn
 
 end module grid_procs
