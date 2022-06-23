@@ -11,8 +11,9 @@ module grid_procs
   integer,save                            :: num_cells, num_nodes, num_edges, num_edges_bndry, num_cells_bndry, num_nodes_bndry
   real,allocatable,dimension(:,:),save    :: cell_vert, cell_center, cell_dist2vert, cell_dist2edgecenter
   real,allocatable,dimension(:,:),save    :: edge_center, edge_normal, edge_tangnt, edge_normal_sign
-  real,allocatable,dimension(:),save      :: edge_area, cell_area
+  real,allocatable,dimension(:),save      :: edge_area, cell_area, cell_neighbr_num
   integer,allocatable,dimension(:,:),save :: cell2cell, cell2edge, edge2cell, edge2node, cell2node, edgemap
+  integer,allocatable,dimension(:,:),save :: cell_neighbr_ptr
   integer,allocatable,dimension(:),save   :: num_edge_cell, num_vert_edge, num_vert_cell
   !integer,allocatable,dimension(:),save   :: node2nodeptr, node2node, node2edge, node2cell, node2cellptr
   integer,allocatable,dimension(:),save   :: node2cell_ntot, node2cell_ptr, node2cell
@@ -136,14 +137,16 @@ contains
   subroutine grid_links
     implicit none
 
-    integer               :: ndim,i,j
+    integer               :: ndim,i,j,nt, ie,ie1,ic,ic1,ic2, iv1,iv2
+    integer               :: k,jc,jc1,je,je1,je2,jv1,jv2, kv1,kv2
     integer,allocatable   :: iwrk1d(:),iwrk2d(:,:)
-    integer,allocatable   :: cell2cell_tmp(:,:), cell2edge_tmp(:,:), cell2node_tmp(:,:)
+    integer,allocatable   :: cell2cell_tmp(:,:), cell2edge_tmp(:,:), cell2node_tmp(:,:), tmpi2d(:,:)
 
     !--------------------------------------------------------------------------!
     ! allocation
     !--------------------------------------------------------------------------!
     allocate(cell2cell(num_cells,num_vert_max), cell2edge(num_cells,num_vert_max))
+    allocate(cell_neighbr_ptr(num_cells,num_vert_max), cell_neighbr_num(num_cells))
 
     !--------------------------------------------------------------------------!
     ! find links for edge2node & edge2cell
@@ -196,6 +199,33 @@ contains
     !ndim=node2cellptr(nnodes+1)-1
     !allocate(node2cell(ndim))
     !node2cell(1:ndim)=iwrk1d(1:ndim)
+
+
+    !--------------------------------------------------------------------------!
+    ! For cell=ic, determine the neighboring cell of each edge --> cell_neighbr_ptr(ic,ie)
+    ! If edge on boundary ---> cell_neighbr_ptr(ic,ie)=ic
+    !--------------------------------------------------------------------------!
+    cell_neighbr_num(:)=0
+    cell_neighbr_ptr(:,:)=0
+    do ic=1,num_cells
+      nt=0
+      do ie=1,num_vert_cell(ic)
+        ie1=cell2edge(ic,ie)
+        ic1=edge2cell(ie1,1)
+        ic2=edge2cell(ie1,2)
+
+        cell_neighbr_ptr(ic,ie)=ic
+        if (ic1>0 .and. ic1/=ic) then
+          cell_neighbr_ptr(ic,ie)=ic1
+          nt=nt+1
+        elseif (ic2>0 .and. ic2/=ic) then
+          cell_neighbr_ptr(ic,ie)=ic2
+          nt=nt+1
+        endif
+      enddo
+      cell_neighbr_num(ic)=nt
+    enddo
+
 
     !deallocate(iwrk1d, iwrk2d)
     deallocate(cell2cell_tmp, cell2edge_tmp, cell2node_tmp)
