@@ -1,5 +1,6 @@
 module gradient
 
+  use data_type
   use input
   use grid_procs
   use gradient_ggcb
@@ -42,8 +43,8 @@ contains
   subroutine gradient_cellcntr (fc,dfc)
     implicit  none
 
-    real,intent(in)   :: fc(num_cells)
-    real,intent(out)  :: dfc(num_cells,2)
+    real,intent(in)   :: fc(ncells)
+    real,intent(out)  :: dfc(ncells,2)
     integer           :: i,j, ic,ic1, ie,ie1, in,iv,iv1,iv2, nt
     real              :: af,nxf,nyf
     real,allocatable  :: fv(:)
@@ -51,16 +52,16 @@ contains
     dfc(:,:)=0.d0
 
     if (lgrad_ggnb) then
-      call grad_ggnb(fc,dfc)
+      !call grad_ggnb(fc,dfc)
       call grad_ggnb_exp(fc,dfc)
 
     elseif (lgrad_ggcb) then
       call grad_ggcb(fc,dfc)
 
     elseif (lgrad_lsq) then
-      if (lgrad_lsq_fn1) then
-        call grad_lsq_fn1(fc,dfc)
-        
+      if (lgrad_lsq_fn) then
+        call grad_lsq_fn(fc,dfc)
+
       elseif (lgrad_lsq_nn) then
         call grad_lsq_nn (fc,dfc)
       endif
