@@ -11,7 +11,7 @@ module input
   integer,save            :: grad_cellcntr_imethd1, grad_cellcntr_imethd2
   real,save               :: grad_cellcntr_lsq_pow
   logical,save            :: lgrad_ggcb, lgrad_ggnb, lgrad_ggnb_exp, lgrad_lsq
-  logical,save            :: lgrad_lsq_fn1, lgrad_lsq_fn2, lgrad_lsq_nn
+  logical,save            :: lgrad_lsq_fn, lgrad_lsq_nn
 
   contains
 
@@ -72,8 +72,7 @@ module input
     lgrad_ggnb_exp=.false.
 
     lgrad_lsq=.false.
-    lgrad_lsq_fn1=.false.
-    lgrad_lsq_fn2=.false.
+    lgrad_lsq_fn =.false.
     lgrad_lsq_nn =.false.
 
     if (grad_cellcntr_imethd1==1) then
@@ -86,13 +85,13 @@ module input
     elseif (grad_cellcntr_imethd1==3) then
       lgrad_lsq=.true.
       if (grad_cellcntr_imethd2==0) then
-        lgrad_lsq_fn1=.true.
+        lgrad_lsq_fn=.true.
 
       elseif (grad_cellcntr_imethd2==1) then
-        lgrad_lsq_fn2=.true.
-
-      elseif (grad_cellcntr_imethd2==2) then
         lgrad_lsq_nn=.true.
+
+      else
+        write(*,*) 'error'
       endif
 
     else
@@ -126,10 +125,8 @@ module input
         else
           write(iunit_output,'(a,f3.1)') 'Weigghted LSQ with 1/d^',grad_cellcntr_lsq_pow
         endif
-        if (lgrad_lsq_fn1) then
+        if (lgrad_lsq_fn) then
           write(iunit_output,'(a)') 'LSQ employs face neighbor stencil'
-        elseif (lgrad_lsq_fn2) then
-          write(iunit_output,'(a)') 'LSQ employs face neighbors of faceneighbors stencil'
         elseif (lgrad_lsq_nn) then
           write(iunit_output,'(a)') 'LSQ employs node neighbors stencil'
         endif
