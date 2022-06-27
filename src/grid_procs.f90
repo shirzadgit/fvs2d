@@ -2,35 +2,31 @@ module grid_procs
 
   use mainparam, only : iunit_grid
   use input, only     : file_grid
-  use grid_graph
+  use data_type
   use kdtree2_module
 
   implicit none
 
-  integer,parameter                       :: num_vert_max=3
-  integer,save                            :: num_cells, num_nodes, num_edges, num_edges_bndry, num_cells_bndry, num_nodes_bndry
-  real,allocatable,dimension(:,:),save    :: cell_vert, cell_center, cell_dist2vert, cell_dist2edgecenter
-  real,allocatable,dimension(:,:),save    :: edge_center, edge_normal, edge_tangnt, edge_normal_sign
-  real,allocatable,dimension(:),save      :: edge_area, cell_area, cell_neighbr_num
-  integer,allocatable,dimension(:,:),save :: cell2cell, cell2edge, edge2cell, edge2node, cell2node, edgemap
-  integer,allocatable,dimension(:,:),save :: cell_neighbr_ptr
-  integer,allocatable,dimension(:),save   :: num_edge_cell, num_vert_edge, num_vert_cell
-  !integer,allocatable,dimension(:),save   :: node2nodeptr, node2node, node2edge, node2cell, node2cellptr
-  integer,allocatable,dimension(:),save   :: node2cell_ntot, node2cell_ptr, node2cell
-  integer,allocatable,dimension(:),save   :: cells_bndry_ptr, edges_bndry_ptr, nodes_bndry_ptr
   type(kdtree2), pointer,save             :: tree_cellcntr, tree_cellvert
 
-  !-- cell neighbors
-  integer,allocatable,save                :: cell_neighbr_fn1_num(:), cell_neighbr_fn1_ptr(:)
-  integer,allocatable,save                :: cell_neighbr_fn2_num(:), cell_neighbr_fn2_ptr(:)
-  integer,allocatable,save                :: cell_neighbr_nn_num (:), cell_neighbr_nn_ptr (:)
-
-
-contains
+  contains
 
 
   !============================================================================!
-  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !--cell data:
+  !  cell(1:ncells)%nvrt    = Number of nodes/vertices of each cell
+  !  cell(1:ncells)%node(:) = Pointer to nodes of each cell
+  !  cell(1:ncells)%x/y     = cell center x/y-coordinate
+  !
+  !--node data:
+  !  node(1:nnodes)%x     = x-coordinate of the nodes
+  !  node(1:nnodes)%y     = y-coordinate of the nodes
+  !  node(1:nnodes)%intrp_idw(:)  = intrp coeff based on inverse distance
+  !
+  !--edge data:
+  !  edge(1:nedges)%n1/n2 = edge two end nodes
+  !  edge(1:nedges)%c1/c2 = edge left and right cells
+  !  edge(1:nedges)%x/y   = edge center x/y-coordinate
   !============================================================================!
   subroutine grid_procs_init
     implicit none
@@ -42,26 +38,9 @@ contains
 
 
     !--------------------------------------------------------------------------!
-    ! prepare grid links
+    ! construct grid links and data
     !--------------------------------------------------------------------------!
-    call grid_links
-
-
-    !--------------------------------------------------------------------------!
-    ! compute grid properties (erea, normal, etc.)
-    !--------------------------------------------------------------------------!
-    call grid_props
-
-
-    !--------------------------------------------------------------------------!
-    ! compute grid properties (erea, normal, etc.)
-    !--------------------------------------------------------------------------!
-    call grid_cell_neighbr_nn
-
-    !--------------------------------------------------------------------------!
-    ! check grid and computed properties
-    !--------------------------------------------------------------------------!
-    !call grid_check
+    call grid_data
 
 
     return
@@ -72,70 +51,55 @@ contains
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
   subroutine grid_read
+
     implicit none
+    integer   :: i,ii,istat
+    logical   :: linputfile
 
-    integer             :: i,istat,nloc1,nloc2,eloc1,eloc2
-    real,allocatable    :: rwrk2d(:,:)
-    character           :: dchar*400
 
     !--------------------------------------------------------------------------!
-    ! open grid file
+    ! check grid file
     !--------------------------------------------------------------------------!
+    inquire(file=trim(file_grid),exist=linputfile);
+    if (.not.linputfile) then
+      write(*,*)
+      write(*,*) 'linputfile:',linputfile
+      write(*,*) 'cannot find "'//trim(file_grid)//'" file!'
+      write(*,*) 'error in --> mod:grid_procs, sub:grid_read'
+      stop 'program stopped at "grid_read"'
+    endif
+
+    !-- open grid file and skip the first line
     open (iunit_grid,file=trim(file_grid),status='unknown',IOSTAT=istat)
     read (iunit_grid,*)
-    read (iunit_grid,*)
-    read (iunit_grid,'(a)') dchar
+    read (iunit_grid,*) nnodes, ncells_tri, ncells_quad
 
+    !--  allocate node and cell arrays.
+    ncells = ncells_tri + ncells_quad
+    allocate(node(nnodes))
+    allocate(cell(ncells))
 
-    !--------------------------------------------------------------------------!
-    ! determine number of nodes and cells
-    !--------------------------------------------------------------------------!
-    do i=1,len(dchar)-2
-      if (dchar(i:i+1)=='N=' .or. dchar(i:i+1)=='n=')		nloc1=i+2
-      if (dchar(i:i+1)=='E=' .or. dchar(i:i+1)=='e=')		nloc2=i-1
-      if (dchar(i:i+1)=='E=' .or. dchar(i:i+1)=='e=')		eloc1=i+2
-      if (dchar(i:i+2)=='ET=' .or. dchar(i:i+2)=='et=')	eloc2=i-1
-    enddo
-    read (dchar(nloc1:nloc2),*,iostat=istat) num_nodes
-    read (dchar(eloc1:eloc2),*,iostat=istat) num_cells
-
-
-    !--------------------------------------------------------------------------!
-    ! allocate and read nodes/vertices coordinates
-    !--------------------------------------------------------------------------!
-    allocate(cell_vert(num_nodes,2))
-    do i=1,num_nodes
-      read (iunit_grid,*) cell_vert(i,1),cell_vert(i,2)
+    !-- read node/vertices coordinates
+    do i=1,nnodes
+      read (iunit_grid,*) node(i)%x, node(i)%y
     enddo
 
-
-    !--------------------------------------------------------------------------!
-    ! allocate and read cell connectivity
-    !--------------------------------------------------------------------------!
-    allocate(cell2node(num_cells,num_vert_max))
-    do i=1,num_cells
-      read (iunit_grid,*) cell2node(i,1),cell2node(i,2),cell2node(i,3)
+    !-- read triangle cells
+    do i=1,ncells_tri
+      cell(i)%nvrt = 3
+      allocate(cell(i)%node(3))
+      read (iunit_grid,*) cell(i)%node(1), cell(i)%node(2), cell(i)%node(3)
     enddo
 
-
-    !--------------------------------------------------------------------------!
-    ! allocate and read number of edges/vertices per cell
-    !--------------------------------------------------------------------------!
-    allocate(num_vert_cell(num_cells))
-    num_vert_cell(:)=num_vert_max
-
-
-    !--------------------------------------------------------------------------!
-    ! initialize k-d tree based on cell nodes/vertices
-    !--------------------------------------------------------------------------!
-    allocate(rwrk2d(2,num_nodes))
-    do i=1,num_nodes
-      rwrk2d(1:2,i)=cell_vert(i,1:2)
+    !-- read quad cells
+    do i=1,ncells_quad
+      ii = i + ncells_tri
+      cell(ii)%nvrt = 4
+      allocate(cell(ii)%node(4))
+      read (iunit_grid,*) cell(ii)%node(1), cell(ii)%node(2), cell(ii)%node(3), cell(ii)%node(4)
     enddo
-    tree_cellvert => kdtree2_create(rwrk2d,sort=.true.,rearrange=.true.)
-    deallocate(rwrk2d)
 
-
+    !-- close grid file
     close(iunit_grid)
 
     return
@@ -145,515 +109,430 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grid_links
+  subroutine grid_data
+
     implicit none
-
-    integer               :: ndim,i,j,nt, ie,ie1,ic,ic1,ic2, iv1,iv2
-    integer               :: k,jc,jc1,je,je1,je2,jv1,jv2, kv1,kv2
-    integer,allocatable   :: iwrk1d(:),iwrk2d(:,:)
-    integer,allocatable   :: cell2cell_tmp(:,:), cell2edge_tmp(:,:), cell2node_tmp(:,:), tmpi2d(:,:)
-
-    !--------------------------------------------------------------------------!
-    ! allocation
-    !--------------------------------------------------------------------------!
-    allocate(cell2cell(num_cells,num_vert_max), cell2edge(num_cells,num_vert_max))
-    allocate(cell_neighbr_ptr(num_cells,num_vert_max), cell_neighbr_num(num_cells))
-
-    !--------------------------------------------------------------------------!
-    ! find links for edge2node & edge2cell
-    !--------------------------------------------------------------------------!
-    allocate(cell2node_tmp(num_vert_max,num_cells))
-    do i=1,num_cells
-      cell2node_tmp(1:num_vert_max,i) = cell2node(i,1:num_vert_max)
-    end do
-
-    num_edges=0
-    allocate(iwrk2d(6,4*num_cells))
-    call findEdges(num_vert_max,num_cells,num_edges,cell2node_tmp,iwrk2d)
-
-    allocate(edgemap(6,num_edges),edge2node(num_edges,2),edge2cell(num_edges,2));
-    edgemap(1:6,1:num_edges)=iwrk2d(1:6,1:num_edges)
-
-    do i=1,num_edges
-      edge2node(i,1:2)=edgemap(1:2,i)
-      edge2cell(i,1:2)=edgemap(3:4,i)
-    end do
-
-    !--------------------------------------------------------------------------!
-    ! find links for cell2cell and cell2edge
-    !--------------------------------------------------------------------------!
-    allocate(cell2cell_tmp(num_vert_max,num_cells))
-    allocate(cell2edge_tmp(num_vert_max,num_cells))
-
-    call findcell2edgemap(edgemap,cell2cell_tmp,cell2edge_tmp,num_vert_max,num_edges,num_cells)
-
-    do i=1,num_cells
-      cell2cell(i,1:num_vert_max)=cell2cell_tmp(1:num_vert_max,i)
-      cell2edge(i,1:num_vert_max)=cell2edge_tmp(1:num_vert_max,i)
-    end do
-
-
-    !-------------------------------------------------------------------------------
-    !
-    !-------------------------------------------------------------------------------
-    !allocate(node2nodeptr(num_nodes+1))
-    !allocate(node2node(2*num_edges))
-    !allocate(node2edge(2*num_edges))
-    !call findnodemap(edgemap,lnode2node,lnode2edge,lnode2nodeptr,nnodes,nedges)
-
-
-    !-------------------------------------------------------------------------------
-    !
-    !-------------------------------------------------------------------------------
-    !allocate(lnode2cellptr(num_nodes+1))
-    !call findnode2cellmap(cell2node,iwrk1d,node2cellptr,nvermax,num_nodes,num_cells)
-    !ndim=node2cellptr(nnodes+1)-1
-    !allocate(node2cell(ndim))
-    !node2cell(1:ndim)=iwrk1d(1:ndim)
+    integer             :: i,j,k,ii,ic,jc,iv,vp
+    integer             :: v1,v2,v3,v4, vL,vR, in,im, ie,je
+    integer,allocatable :: locedge(:)
+    real                :: xc,yc, x1,x2,x3,x4, y1,y2,y3,y4, dx,dy
+    real,allocatable    :: tmpr(:,:)
+    logical             :: lfound
 
 
     !--------------------------------------------------------------------------!
-    ! For cell=ic, determine the neighboring cell of each edge --> cell_neighbr_ptr(ic,ie)
-    ! If edge on boundary ---> cell_neighbr_ptr(ic,ie)=ic
+    ! cell centroids
     !--------------------------------------------------------------------------!
-    cell_neighbr_num(:)=0
-    cell_neighbr_ptr(:,:)=0
-    do ic=1,num_cells
-      nt=0
-      do ie=1,num_vert_cell(ic)
-        ie1=cell2edge(ic,ie)
-        ic1=edge2cell(ie1,1)
-        ic2=edge2cell(ie1,2)
-
-        cell_neighbr_ptr(ic,ie)=ic
-        if (ic1>0 .and. ic1/=ic) then
-          cell_neighbr_ptr(ic,ie)=ic1
-          nt=nt+1
-        elseif (ic2>0 .and. ic2/=ic) then
-          cell_neighbr_ptr(ic,ie)=ic2
-          nt=nt+1
-        endif
+    do ic=1,ncells_tri
+      xc=0.d0
+      yc=0.d0
+      do iv=1,3
+        vp = cell(ic)%node(iv)
+        xc = xc + node(vp)%x
+        yc = yc + node(vp)%y
       enddo
-      cell_neighbr_num(ic)=nt
+      cell(ic)%x = xc/3.d0
+      cell(ic)%y = yc/3.d0
+    end do
+
+    do i=1,ncells_quad
+      ic = ncells_tri + i
+      xc=0.d0
+      yc=0.d0
+      do iv=1,4
+        vp = cell(ic)%node(iv)
+        xc = xc + node(vp)%x
+        yc = yc + node(vp)%y
+      enddo
+      cell(ic)%x = xc/4.d0
+      cell(ic)%y = yc/4.d0
+    end do
+
+
+    !--------------------------------------------------------------------------!
+    ! cell volume
+    !--------------------------------------------------------------------------!
+    do ic=1,ncells_tri
+      x1=node(cell(ic)%node(1))%x;  y1=node(cell(ic)%node(1))%y;
+      x2=node(cell(ic)%node(2))%x;  y2=node(cell(ic)%node(2))%y;
+      x3=node(cell(ic)%node(3))%x;  y3=node(cell(ic)%node(3))%y;
+      cell(ic)%vol=tri_area(x1,x2,x3,y1,y2,y3)
+    enddo
+    do i=1,ncells_quad
+      ic=i+ncells_tri
+      x1=node(cell(ic)%node(1))%x;  y1=node(cell(ic)%node(1))%y;
+      x2=node(cell(ic)%node(2))%x;  y2=node(cell(ic)%node(2))%y;
+      x3=node(cell(ic)%node(3))%x;  y3=node(cell(ic)%node(3))%y;
+      x4=node(cell(ic)%node(4))%x;  y4=node(cell(ic)%node(4))%y;
+      cell(ic)%vol= tri_area(x1,x2,x3,y1,y2,y3) + tri_area(x1,x3,x4,y1,y3,y4)
     enddo
 
 
-    !deallocate(iwrk1d, iwrk2d)
-    deallocate(cell2cell_tmp, cell2edge_tmp, cell2node_tmp)
-
-    return
-  end subroutine grid_links
-
-
-  !============================================================================!
-  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
-  !============================================================================!
-  subroutine grid_props
-    implicit none
-
-    integer                           :: ic,ic1,ic2, ie,ie1,ie2, iv,iv1,iv2, in,in1,in2, nt,i,j,dum1,dum2
-    integer,allocatable               :: iwrk1d(:), iwrk2d(:,:)
-    real                              :: tx,ty,xc,yc,dx,dy, vol,xf,af,nx, r(2)
-    real,allocatable                  :: rwrk2d(:,:)
-    type(kdtree2_result),allocatable	:: fnearest(:)
-    integer                           :: num_nearests
-
     !--------------------------------------------------------------------------!
-    ! allocation
+    ! build k-d tree based on cell vertices
     !--------------------------------------------------------------------------!
-    allocate(cell_center(num_cells,2), cell_area(num_cells), cell_dist2vert(num_cells,num_vert_max))
-    allocate(edge_center(num_edges,2), edge_area(num_edges))
-    allocate(edge_normal(num_edges,2), edge_tangnt(num_edges,2), edge_normal_sign(num_cells,num_vert_max) )
+    allocate(tmpr(2,nnodes))
+    do i=1,nnodes
+      tmpr(1,i)=node(i)%x
+      tmpr(2,i)=node(i)%y
+    enddo
+    tree_cellvert => kdtree2_create(tmpr,sort=.true.,rearrange=.true.)
+    deallocate(tmpr)
 
 
     !--------------------------------------------------------------------------!
-    ! determine boundary edges
+    ! build k-d tree based on cell centers
     !--------------------------------------------------------------------------!
-    allocate(iwrk1d(num_edges))
-    nt=0;
-    do ie=1,num_edges
-      if (edge2cell(ie,1)*edge2cell(ie,2)==0) then
-        nt=nt+1
-        if (nt>0) iwrk1d(nt)=ie
-      endif
-    end do
-    num_edges_bndry=nt
-    if (nt>0) then
-      allocate(edges_bndry_ptr(nt))
-      edges_bndry_ptr(1:nt)= iwrk1d(1:nt)
-    endif
-    deallocate(iwrk1d)
+    allocate(tmpr(2,ncells))
+    do i=1,ncells
+      tmpr(1,i)=cell(i)%x
+      tmpr(2,i)=cell(i)%y
+    enddo
+    tree_cellcntr => kdtree2_create(tmpr,sort=.true.,rearrange=.true.)
+    deallocate(tmpr)
 
 
     !--------------------------------------------------------------------------!
-    ! determine boundary nodes
+    ! distribute cell index to nodes
     !--------------------------------------------------------------------------!
-    allocate(iwrk1d(num_edges*2))
-    nt=0;
-    do ie=1,num_edges
-      if (edge2cell(ie,1)*edge2cell(ie,2)==0) then
-        iv1=edge2node(ie,1)
-        iv2=edge2node(ie,2)
+    node(1:nnodes)%ncells = 0
+    do ic=1,ncells
+      do iv=1,cell(ic)%nvrt
+        vp = cell(ic)%node(iv)
+        node(vp)%ncells = node(vp)%ncells + 1
+      enddo
+    enddo
+    do i=1,nnodes
+      allocate(node(i)%cell(node(i)%ncells));
+    enddo
+    node(1:nnodes)%ncells = 0
+    do ic=1,ncells
+      do iv=1,cell(ic)%nvrt
+        vp = cell(ic)%node(iv)
+        node(vp)%ncells = node(vp)%ncells + 1
+        node(vp)%cell(node(vp)%ncells) = ic
+      enddo
+    enddo
 
-        if (nt==0) then
-          nt=nt+1
-          iwrk1d(nt)=iv1; nt=nt+1
-          iwrk1d(nt)=iv2
+
+    !--------------------------------------------------------------------------!
+    ! distribute cell index to nodes
+    !--------------------------------------------------------------------------!
+    do ic=1,ncells
+      cell(ic)%nnghbrs=cell(ic)%nvrt
+      allocate(cell(ic)%nghbr(cell(ic)%nvrt));
+    enddo
+
+    cells: do ic=1,ncells
+      cell_nvrt: do iv=1,cell(ic)%nvrt
+        if (iv  < cell(ic)%nvrt) vL = cell(ic)%node(iv+1)
+        if (iv == cell(ic)%nvrt) vL = cell(ic)%node(1)
+                                 vR = cell(ic)%node(iv)
+
+        !--Loop over the surrounding cells of node vR and find cell neighbor from them
+        lfound = .false.
+        cells_around_vR : do j = 1, node(vR)%ncells
+          jc = node(vR)%cell(j)
+          edge_matching : do ii = 1, cell(jc)%nvrt
+            if (ii  > 1) v2 = cell(jc)%node(ii-1)
+            if (ii == 1) v2 = cell(jc)%node(cell(jc)%nvrt)
+                         v1 = cell(jc)%node(ii)
+
+            if (v1==vR .and. v2==vL) then
+              lfound = .true.
+              im = ii+1
+              if (im > cell(jc)%nvrt) im = im - cell(jc)%nvrt
+              exit edge_matching
+            endif
+          end do edge_matching
+
+          if (lfound) exit cells_around_vR
+        end do cells_around_vR
+
+        in = iv + 2
+        if (in > cell(ic)%nvrt) in = in - cell(ic)%nvrt
+
+        if (lfound) then
+          cell(ic)%nghbr(in) = jc
+          cell(jc)%nghbr(im) = ic
         else
-          dum1=1
-          dum2=1
-          do j=1,nt;
-            dum1=min(dum1,abs(iwrk1d(j)-iv1));
-            dum2=min(dum2,abs(iwrk1d(j)-iv2));
-          enddo
-          if (dum1/=0) then
-            nt=nt+1
-            iwrk1d(nt)=iv1
-          endif
-          if (dum2/=0) then
-            nt=nt+1
-            iwrk1d(nt)=iv2
-          endif
+          cell(ic)%nghbr(in) = 0
         endif
-      endif
-    end do
-    num_nodes_bndry=nt
-    if (nt>0) then
-      allocate(nodes_bndry_ptr(nt))
-      nodes_bndry_ptr(1:nt)= iwrk1d(1:nt)
-    endif
-    deallocate(iwrk1d)
+      end do cell_nvrt
+    end do cells
 
 
     !--------------------------------------------------------------------------!
-    ! determine boundary cells
+    ! count number of edges and allocate edge array
     !--------------------------------------------------------------------------!
-    allocate(iwrk1d(num_cells))
-    nt=0;
-    do ic=1,num_cells
-      if (cell2cell(ic,1)*cell2cell(ic,2)*cell2cell(ic,3)==0) then
-        nt=nt+1
-        if (nt>0) iwrk1d(nt)=ic;
-      endif
-    end do
-    num_cells_bndry=nt
-    if (nt>0) then
-      allocate(cells_bndry_ptr(nt))
-      cells_bndry_ptr(1:nt)= iwrk1d(1:nt)
-    endif
-    deallocate(iwrk1d)
-
-
-    !--------------------------------------------------------------------------!
-    ! compute cell center (works for triangle for now)
-    !--------------------------------------------------------------------------!
-    do ic=1,num_cells
-      xc=0.d0;
-      yc=0.d0;
-      do iv=1,num_vert_cell(ic)
-        xc = xc + cell_vert(cell2node(ic,iv),1)
-        yc = yc + cell_vert(cell2node(ic,iv),2)
+    nedges=0
+    do ic = 1, ncells
+      do j=1,cell(ic)%nnghbrs
+        if ( cell(ic)%nghbr(j) > ic .or. cell(ic)%nghbr(j)==0 ) nedges = nedges + 1
       enddo
-      cell_center(ic,1)=xc/dble(num_vert_cell(ic))
-      cell_center(ic,2)=yc/dble(num_vert_cell(ic))
+    enddo
+    allocate(edge(nedges))
+
+
+    !--------------------------------------------------------------------------!
+    ! assign edge two end nodes (n1/n2), and left and right cells (c1/c2)
+    !--------------------------------------------------------------------------!
+    nedges=0
+    edge(:)%c1 = 0
+    edge(:)%c2 = 0
+    !--triangle cells
+    do ic = 1, ncells_tri
+      v1=cell(ic)%node(1)
+      v2=cell(ic)%node(2)
+      v3=cell(ic)%node(3)
+
+      if ( cell(ic)%nghbr(3) > ic  .or. cell(ic)%nghbr(3)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v1
+        edge(nedges)%n2 = v2
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(3)
+      endif
+
+      if ( cell(ic)%nghbr(1) > ic .or. cell(ic)%nghbr(1)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v2
+        edge(nedges)%n2 = v3
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(1)
+      endif
+
+      if ( cell(ic)%nghbr(2) > ic .or. cell(ic)%nghbr(2)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v3
+        edge(nedges)%n2 = v1
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(2)
+      endif
+    enddo
+
+    !--quad cells
+    do i = 1, ncells_quad
+      ic=ncells_tri + i
+      v1=cell(ic)%node(1)
+      v2=cell(ic)%node(2)
+      v3=cell(ic)%node(3)
+      v4=cell(ic)%node(4)
+
+      if ( cell(ic)%nghbr(3) > ic  .or. cell(ic)%nghbr(3)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v1
+        edge(nedges)%n2 = v2
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(3)
+      endif
+
+      if ( cell(ic)%nghbr(4) > ic  .or. cell(ic)%nghbr(4)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v2
+        edge(nedges)%n2 = v3
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(4)
+      endif
+
+      if ( cell(ic)%nghbr(1) > ic .or. cell(ic)%nghbr(1)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v3
+        edge(nedges)%n2 = v4
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(1)
+      endif
+
+      if ( cell(ic)%nghbr(2) > ic .or. cell(ic)%nghbr(2)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v4
+        edge(nedges)%n2 = v1
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(2)
+      endif
     enddo
 
 
     !--------------------------------------------------------------------------!
-    ! compute edge center and area
+    ! assign cell index to edge
     !--------------------------------------------------------------------------!
-    do ie=1,num_edges
-      iv1=edge2node(ie,1)
-      iv2=edge2node(ie,2)
-      edge_center(ie,1)=( cell_vert(iv1,1) + cell_vert(iv2,1) ) / 2.d0
-      edge_center(ie,2)=( cell_vert(iv1,2) + cell_vert(iv2,2) ) / 2.d0
+    do ic=1,ncells
+      allocate(cell(ic)%edge(cell(ic)%nvrt))
+    enddo
 
-      dx=cell_vert(iv1,1) - cell_vert(iv2,1)
-      dy=cell_vert(iv1,2) - cell_vert(iv2,2)
-      edge_area(ie)=dsqrt(dx**2 + dy**2)
+    nedges=0
+    !--triangle cells
+    allocate(locedge(3));  locedge(1)=2;  locedge(2)=3;  locedge(3)=1;
+    do ic = 1, ncells_tri
+      if ( cell(ic)%nghbr(3) > ic  .or. cell(ic)%nghbr(3)==0 ) then
+        nedges = nedges + 1
+        cell(ic)%edge(1)= nedges
+      else
+        jc=cell(ic)%nghbr(3)
+        tlp1: do k=1,3
+          if (cell(jc)%nghbr(k)==ic) then
+            ie=locedge(k)
+            cell(ic)%edge(1)=cell(jc)%edge(ie)
+            exit tlp1
+          endif
+        enddo tlp1
+      endif
+
+      if ( cell(ic)%nghbr(1) > ic .or. cell(ic)%nghbr(1)==0 ) then
+       nedges = nedges + 1
+       cell(ic)%edge(2)= nedges
+     else
+       jc=cell(ic)%nghbr(1)
+       tlp2: do k=1,3
+         if (cell(jc)%nghbr(k)==ic) then
+           ie=locedge(k)
+           cell(ic)%edge(2)=cell(jc)%edge(ie)
+           exit tlp2
+         endif
+       enddo tlp2
+      endif
+
+      if ( cell(ic)%nghbr(2) > ic .or. cell(ic)%nghbr(2)==0 ) then
+       nedges = nedges + 1
+       cell(ic)%edge(3)= nedges
+     else
+       jc=cell(ic)%nghbr(2)
+       tlp3: do k=1,3
+         if (cell(jc)%nghbr(k)==ic) then
+           ie=locedge(k)
+           cell(ic)%edge(3)=cell(jc)%edge(ie)
+           exit tlp3
+         endif
+       enddo tlp3
+      endif
+    enddo
+
+    !--quad cells
+    deallocate(locedge)
+    allocate(locedge(4));  locedge(1)=3;  locedge(2)=4;  locedge(3)=1;  locedge(4)=2
+    do i = 1, ncells_quad
+      ic=ncells_tri + i
+      if ( cell(ic)%nghbr(3) > ic  .or. cell(ic)%nghbr(3)==0 ) then
+        nedges = nedges + 1
+        cell(ic)%edge(1)= nedges
+      else
+        jc=cell(ic)%nghbr(3)
+        qlp1: do k=1,4
+          if (cell(jc)%nghbr(k)==ic) then
+            ie=locedge(k)
+            cell(ic)%edge(1)=cell(jc)%edge(ie)
+            exit qlp1
+          endif
+        enddo qlp1
+      endif
+
+      if ( cell(ic)%nghbr(4) > ic  .or. cell(ic)%nghbr(4)==0 ) then
+        nedges = nedges + 1
+        cell(ic)%edge(2)= nedges
+      else
+        jc=cell(ic)%nghbr(4)
+        qlp2: do k=1,4
+          if (cell(jc)%nghbr(k)==ic) then
+            ie=locedge(k)
+            cell(ic)%edge(2)=cell(jc)%edge(ie)
+            exit qlp2
+          endif
+        enddo qlp2
+      endif
+
+      if ( cell(ic)%nghbr(1) > ic .or. cell(ic)%nghbr(1)==0 ) then
+        nedges = nedges + 1
+        cell(ic)%edge(3)= nedges
+      else
+        jc=cell(ic)%nghbr(1)
+        qlp3: do k=1,4
+          if (cell(jc)%nghbr(k)==ic) then
+            ie=locedge(k)
+            cell(ic)%edge(3)=cell(jc)%edge(ie)
+            exit qlp3
+          endif
+        enddo qlp3
+      endif
+
+      if ( cell(ic)%nghbr(2) > ic .or. cell(ic)%nghbr(2)==0 ) then
+        nedges = nedges + 1
+        cell(ic)%edge(4)= nedges
+      else
+        jc=cell(ic)%nghbr(2)
+        qlp4: do k=1,4
+          if (cell(jc)%nghbr(k)==ic) then
+            ie=locedge(k)
+            cell(ic)%edge(4)=cell(jc)%edge(ie)
+            exit qlp4
+          endif
+        enddo qlp4
+      endif
     enddo
 
 
     !--------------------------------------------------------------------------!
-    ! compute edge normal
+    ! compute edge center, area, normal, and tangential vectors
     !--------------------------------------------------------------------------!
-    do ie=1,num_edges
-      iv1=edge2node(ie,1)
-      iv2=edge2node(ie,2)
-      dx=cell_vert(iv2,1) - cell_vert(iv1,1)
-      dy=cell_vert(iv2,2) - cell_vert(iv1,2)
-      tx=dx/edge_area(ie)
-      ty=dy/edge_area(ie)
+    do i=1,nedges
+      v1=edge(i)%n1
+      v2=edge(i)%n2
 
-      edge_normal(ie,1)= ty
-      edge_normal(ie,2)=-tx
-      edge_tangnt(ie,1)= tx
-      edge_tangnt(ie,2)= ty
-    end do
+      dx=node(v2)%x - node(v1)%x
+      dy=node(v2)%y - node(v1)%y
+
+      edge(i)%area = dsqrt(dx**2+dy**2)
+
+      edge(i)%x = 0.5d0*(node(v1)%x + node(v2)%x)
+      edge(i)%y = 0.5d0*(node(v1)%y + node(v2)%y)
+
+      edge(i)%nx = dy/edge(i)%area
+      edge(i)%ny =-dx/edge(i)%area
+
+      edge(i)%tx = dx/edge(i)%area
+      edge(i)%ty = dy/edge(i)%area
+    enddo
 
 
     !--------------------------------------------------------------------------!
     ! compute edge normal direction for each cell
     !--------------------------------------------------------------------------!
-    do ic=1,num_cells
-      do ie=1,num_vert_cell(ic)
-        ie1=cell2edge(ic,ie)
-        ic1=edge2cell(ie1,1)
-        if (ic==ic1) then
-          edge_normal_sign(ic,ie)=+1.d0
-        else
-          edge_normal_sign(ic,ie)=-1.d0
-        endif
+    do ic=1,ncells_tri
+      allocate(cell(ic)%nrmlsign(3))
+      cell(ic)%nrmlsign(1:3)=1.d0
+      do ie=1,cell(ic)%nvrt
+        je=cell(ic)%edge(ie)
+        jc=edge(je)%c1
+        if (ic/=jc) cell(ic)%nrmlsign(ie)=-1.d0
       enddo
     enddo
 
-
-    !--------------------------------------------------------------------------!
-    ! compute cell volume
-    !--------------------------------------------------------------------------!
-    do ic=1,num_cells
-      vol=0.d0
-      do iv=1,3
-        ie=cell2edge(ic,iv)
-        nx= edge_normal(ie,1) * edge_normal_sign(ic,iv)
-        xf= edge_center(ie,1)
-        af= edge_area(ie)
-        vol = vol +  nx*xf*af
-      enddo
-        cell_area(ic) = vol
-    enddo
-
-
-    !--------------------------------------------------------------------------!
-    ! compute distance between cell center and cell vertices
-    !--------------------------------------------------------------------------!
-    do ic=1,num_cells
-      do iv=1,num_vert_cell(ic)
-        in=cell2node(ic,iv)
-        dx = cell_vert(in,1) - cell_center(ic,1)
-        dy = cell_vert(in,2) - cell_center(ic,2)
-        cell_dist2vert(ic,iv)=dsqrt (dx**2 + dy**2)
+    do i=1,ncells_quad
+      ic=i+ncells_tri
+      allocate(cell(ic)%nrmlsign(4))
+      cell(ic)%nrmlsign(1:4)=1.d0
+      do ie=1,cell(ic)%nvrt
+        je=cell(ic)%edge(ie)
+        jc=edge(je)%c1
+        if (ic/=jc) cell(ic)%nrmlsign(ie)=-1.d0
       enddo
     enddo
-
-
-    !--------------------------------------------------------------------------!
-    ! compute distance between cell center and edge center
-    !--------------------------------------------------------------------------!
-    do ic=1,num_cells
-      do iv=1,num_vert_cell(ic)
-        in=cell2node(ic,iv)
-        !dx = cell_vert(in,1) - cell_center(ic,1)
-        !dy = cell_vert(in,2) - cell_center(ic,2)
-        !cell_dist2edgecenter(ic,iv)=dsqrt (dx**2 + dy**2)
-      enddo
-    enddo
-
-
-    !--------------------------------------------------------------------------!
-    ! initialize k-d tree based on cell centers
-    !--------------------------------------------------------------------------!
-    allocate(rwrk2d(2,num_cells))
-    do i=1,num_cells
-      rwrk2d(1:2,i)=cell_center(i,1:2)
-    enddo
-    tree_cellcntr => kdtree2_create(rwrk2d,sort=.true.,rearrange=.true.)
-    deallocate(rwrk2d)
-
-
-    !--------------------------------------------------------------------------!
-    ! determine number of surrounding cells of each node
-    !--------------------------------------------------------------------------!
-    allocate(node2cell_ntot(num_nodes))
-    node2cell_ntot(:) = 0
-    do ic=1,num_cells
-      do iv=1,num_vert_cell(ic)
-        iv1=cell2node(ic,iv)
-        node2cell_ntot(iv1) = node2cell_ntot(iv1) + 1
-      enddo
-    enddo
-
-
-    !--------------------------------------------------------------------------!
-    ! compute pointer and number of cells surrounding each node
-    ! step-1: find "num_nearests" cell centers w.r.t node "iv"
-    ! step-2: check if each found cell has the same node "iv"
-    ! do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
-    !    ic=node2cell(i) ---> return cell numbers surrounding node "iv"
-    ! enddo
-    !--------------------------------------------------------------------------!
-    num_nearests=10
-    allocate(fnearest(num_nearests))
-    allocate(iwrk1d(num_nodes),iwrk2d(num_nodes,12))
-    iwrk2d(:,:)=0
-    iwrk1d(:)=0
-    do ic=1,num_cells
-      do in=1,num_vert_cell(ic)
-        nt=0
-        iv=cell2node(ic,in)
-        r(1:2)=cell_vert(iv,1:2)
-        if (iwrk1d(iv)==0) then
-          call kdtree2_n_nearest(tp=tree_cellcntr,qv=r,nn=num_nearests,results=fnearest)
-          do i=1,num_nearests
-            ic1=fnearest(i)%idx
-            if (ic1==ic) then
-              nt=nt+1
-              iwrk2d(iv,nt)=ic1
-            elseif (cell2node(ic1,1)==iv .or. cell2node(ic1,2)==iv .or. cell2node(ic1,3)==iv) then
-              nt=nt+1
-              iwrk2d(iv,nt)=ic1
-            endif
-          enddo
-          iwrk1d(iv)=1
-        endif
-      enddo
-    enddo
-
-    do i=1,num_nodes
-      nt=0
-      do j=1,num_nearests
-        if (iwrk2d(i,j)>0) then
-          nt=nt+1
-        endif
-      enddo
-      if (node2cell_ntot(i)/=nt) then
-        write(*,*) 'check number of neighbours',i
-      endif
-    enddo
-
-    nt=sum(node2cell_ntot)
-    allocate(node2cell_ptr(num_nodes), node2cell(nt))
-    node2cell_ptr(1)=1
-    do i=2,num_nodes
-      node2cell_ptr(i) = node2cell_ptr(i-1) + node2cell_ntot(i-1)
-    enddo
-
-    do i=1,num_nodes
-      nt=0
-      do j=node2cell_ptr(i), node2cell_ptr(i) + node2cell_ntot(i) - 1
-        nt=nt+1
-        if (iwrk2d(i,nt)>0) node2cell(j)=iwrk2d(i,nt)
-      enddo
-    enddo
-    deallocate(iwrk1d, iwrk2d)
 
     return
-  end subroutine grid_props
+  end subroutine grid_data
 
 
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grid_cell_neighbr_nn
+  function tri_area(x1,x2,x3,y1,y2,y3) result(area)
     implicit none
+    real, intent(in) :: x1,x2,x3,y1,y2,y3
+    real :: area
 
-    integer             :: nt,nt1,nt2, ic,ic1, in, iv, min_tmp, max_tmp, i, iptr
-    integer,allocatable :: tmp(:), tmp_unq(:), iwrk1(:,:), iwrk2(:), iwrk3(:)
-
-
-    allocate(cell_neighbr_nn_num(num_cells))
-
-    !-- step 1: determine number of neighbourig cells for each node of a cell, excluding the donor cell
-    allocate(iwrk1(num_cells,num_vert_max))
-    iwrk1(:,:) = 0
-    do ic=1,num_cells
-      do in=1,num_vert_cell(ic)
-        iv=cell2node(ic,in)
-
-        nt=0
-        do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
-          ic1=node2cell(i)
-          if (ic/=ic1) nt=nt+1
-        end do
-        iwrk1(ic,in)=nt
-      end do
-    end do
-
-
-    !-- step 2: get total dimension for allocation
-    nt=0;
-    do ic=1,num_cells
-      do in=1,num_vert_cell(ic)
-        iv=cell2node(ic,in)
-        do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
-          ic1=node2cell(i)
-          if (ic/=ic1) nt=nt+1
-        end do
-      end do
-    end do
-
-    !--- step 3: set cell neighbors in 1d array (there will dublicates for each cell)
-    allocate(iwrk2(nt), iwrk3(nt))
-    iwrk2(:)=0
-    nt=0;
-    do ic=1,num_cells
-      do in=1,num_vert_cell(ic)
-        iv=cell2node(ic,in)
-
-        do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
-          ic1=node2cell(i)
-          if (ic/=ic1) then
-            nt=nt+1
-            iwrk2(nt) = ic1
-          endif
-        end do
-      end do
-    end do
-
-    !--- step 4: remove duplicates
-    iwrk3(:)=0
-    nt1=0
-    nt2=0
-    do ic=1,num_cells
-      nt=sum(iwrk1(ic,:))
-      allocate(tmp(nt), tmp_unq(nt))
-      tmp(:)=0
-      nt=0
-      do in=1,num_vert_cell(ic)
-        do i=1,iwrk1(ic,in)
-          nt=nt+1
-          nt1=nt1+1
-          tmp(nt) = iwrk2(nt1)
-        enddo
-      enddo
-
-      nt=0
-      min_tmp = minval(tmp)-1
-      max_tmp = maxval(tmp)
-      do while (min_tmp<max_tmp)
-        nt = nt+1
-        min_tmp = minval(tmp, mask=tmp>min_tmp)
-        tmp_unq(nt) = min_tmp
-      enddo
-      tmp(1:nt)=tmp_unq(1:nt)
-
-      cell_neighbr_nn_num(ic) = nt
-      do i=1,nt
-        nt2=nt2+1
-        iwrk3(nt2) = tmp(i)
-      enddo
-
-      deallocate(tmp,tmp_unq)
-    enddo
-
-    !-- step final:
-    allocate(cell_neighbr_nn_ptr(nt2))
-    do i=1,nt2
-      cell_neighbr_nn_ptr(i) = iwrk3(i)
-    enddo
-
-    ! nt=0
-    ! do ic=1,10 !num_cells
-    !   write(*,*)
-    !   do iptr=nt+1,nt+cell_neighbr_nn_num(ic)
-    !     ic1=cell_neighbr_nn_ptr(iptr)
-    !     write(*,*) ic,ic1
-    !   enddo
-    !   nt=nt+cell_neighbr_nn_num(ic)
-    ! enddo
-    deallocate(iwrk1, iwrk2, iwrk3)
+    area = 0.5d0*( x1*(y2-y3) + x2*(y3-y1) + x3*(y1-y2) )
 
     return
-  end subroutine grid_cell_neighbr_nn
+  end function tri_area
+
 
 end module grid_procs
