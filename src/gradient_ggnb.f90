@@ -1,13 +1,18 @@
 module gradient_ggnb
 
-  use grid_procs
+  use data_type
   use interpolation
 
   implicit none
 
   private
-  integer,allocatable,save  :: grad_cell2neighbr_num(:,:), grad_neighbr_ptr(:)
-  real,allocatable,save     :: grad_ggnb_coef0(:,:), grad_node_weight(:,:,:), grad_neighbhr_weight(:)
+
+  type ggnb_type
+    real,dimension(:),pointer     :: coef0, coefnb
+    real,dimension(:,:),pointer   :: coefedg
+  end type ggnb_type
+
+  type(ggnb_type),dimension(:),pointer  :: ggnb
 
   private :: setup
   public  :: grad_ggnb_init, grad_ggnb, grad_ggnb_exp
@@ -23,9 +28,7 @@ contains
     !--------------------------------------------------------------------------!
     ! allocation
     !--------------------------------------------------------------------------!
-    allocate(grad_ggnb_coef0(num_cells,2))
-    allocate(grad_cell2neighbr_num(num_cells,num_vert_max))
-    allocate(grad_node_weight(num_cells,num_vert_max,2))
+    allocate(ggnb(ncells))
 
 
     !--------------------------------------------------------------------------!
@@ -44,39 +47,65 @@ contains
   subroutine setup
     implicit  none
 
-    integer     :: i,j, ic,ic1,ic2, ie,ie1,ie2, in,iv,iv1,iv2, idim,nt
-    real        :: af,nxf,nyf, dx,dy, w1,w2,wt1,wt2
+    integer           :: i,j, ic,jc,ic2, ie,ie1,ie2, je, in,iv,iv1,iv2,jv
+    real              :: af,nxf,nyf, xc,yc, xv,yv, dx,dy, w1,w2,wt1,wt2, d,idt
+    real,allocatable  :: intrp_idw(:)
 
+    !--------------------------------------------------------------------------!
+    ! compute intrep coefficent
+    !--------------------------------------------------------------------------!
+    allocate(intrp_idw(nnodes))
+    do in=1,nnodes
+      xv=node(in)%x
+      yv=node(in)%y
+
+      idt=0.d0
+      do i=1,node(in)%ncells
+        ic=node(in)%cell(i)
+
+        xc=cell(ic)%x
+        yc=cell(ic)%y
+
+        dx=xc-xv
+        dy=yc-yv
+        d=dsqrt(dx**2 +dy**2)
+
+        idt=idt + 1.d0/d
+      enddo
+
+      intrp_idw(in)=1.d0/idt
+    enddo
 
 
     !--------------------------------------------------------------------------!
     ! compute gradient coeff for cell
     !--------------------------------------------------------------------------!
-    grad_ggnb_coef0 (:,:)=0.d0
-    do ic=1,num_cells
-      do ie=1,num_vert_cell(ic)
-        ie1=cell2edge(ic,ie)
+    do ic=1,ncells
+      allocate(ggnb(ic)%coef0(2))
+      ggnb(ic)%coef0(1:2)=0.d0
+      do ie=1, cell(ic)%nvrt
+        je=cell(ic)%edge(ie)
 
-        af =edge_area(ie1)
-        nxf=edge_normal(ie1,1) * edge_normal_sign(ic,ie)
-        nyf=edge_normal(ie1,2) * edge_normal_sign(ic,ie)
+        af =edge(je)%area
+        nxf=edge(je)%nx * cell(ic)%nrmlsign(ie)
+        nyf=edge(je)%ny * cell(ic)%nrmlsign(ie)
 
-        iv1=edge2node(ie1,1)
-        iv2=edge2node(ie1,2)
+        iv1=edge(je)%n1
+        iv2=edge(je)%n2
 
-        dx = cell_center(ic,1) - cell_vert(iv1,1)
-        dy = cell_center(ic,2) - cell_vert(iv1,2)
+        dx = cell(ic)%x - node(iv1)%x
+        dy = cell(ic)%y - node(iv1)%y
         w1 = 1.d0/dsqrt(dx**2 + dy**2)
 
-        dx = cell_center(ic,1) - cell_vert(iv2,1)
-        dy = cell_center(ic,2) - cell_vert(iv2,2)
+        dx = cell(ic)%x - node(iv2)%x
+        dy = cell(ic)%y - node(iv2)%y
         w2 = 1.d0/dsqrt(dx**2 + dy**2)
 
-        wt1 = interp_nodeweight(iv1)
-        wt2 = interp_nodeweight(iv2)
+        wt1 = intrp_idw(iv1)
+        wt2 = intrp_idw(iv2)
 
-        grad_ggnb_coef0(ic,1)= grad_ggnb_coef0(ic,1) + af*nxf/2.d0 * (w1*wt1 + w2*wt2)
-        grad_ggnb_coef0(ic,2)= grad_ggnb_coef0(ic,2) + af*nyf/2.d0 * (w1*wt1 + w2*wt2)
+        ggnb(ic)%coef0(1)= ggnb(ic)%coef0(1) + af*nxf/2.d0 * (w1*wt1 + w2*wt2)
+        ggnb(ic)%coef0(2)= ggnb(ic)%coef0(2) + af*nyf/2.d0 * (w1*wt1 + w2*wt2)
       enddo
     enddo
 
@@ -84,94 +113,60 @@ contains
     !--------------------------------------------------------------------------!
     ! compute gradient coeff for neighboring cells
     !--------------------------------------------------------------------------!
-    !--------------------------------------------------------------------------!
-    ! step-1: compute array dimension for allocation
-    !--------------------------------------------------------------------------!
-    nt=0;
-    do ic=1,num_cells
-      do in=1,num_vert_cell(ic)
-        iv=cell2node(ic,in)
-        do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
-          ic1=node2cell(i)
-          if (ic/=ic1) nt=nt+1
-        end do
-      end do
-    end do
-    idim=nt
+    do ic=1,ncells
+      i=0
+      do in=1,cell(ic)%nvrt
+        iv=cell(ic)%node(in)
+        i = i + node(iv)%ncells
+      enddo
+      !ggnb(ic)%nnbcells = i
+      allocate( ggnb(ic)%coefnb(i) );
+      !allocate( ggnb(ic)%nbcell(i) );
+    enddo
+
+
+    do ic=1,ncells
+      ggnb(ic)%coefnb(:) =0.d0
+      i=0
+      do in=1,cell(ic)%nvrt
+        iv=cell(ic)%node(in)
+        xv=node(iv)%x
+        yv=node(iv)%y
+        do j=1,node(iv)%ncells
+          i=i+1
+          jc=node(iv)%cell(j)
+          xc=cell(jc)%x
+          yc=cell(jc)%y
+          dx=xc-xv
+          dy=yc-yv
+          d =dsqrt(dx**2+dy**2)
+          ggnb(ic)%coefnb(i)=intrp_idw(iv)/d
+          if (jc==ic) ggnb(ic)%coefnb(i)=0.d0
+        enddo
+      enddo
+    enddo
+
 
     !--------------------------------------------------------------------------!
-    ! step 2: determine number of neighbourig cells for each node of a cell, excluding the donor cell
+    ! computing edge coeff of each node for a cell
     !--------------------------------------------------------------------------!
-    grad_cell2neighbr_num(:,:) = 0
-    do ic=1,num_cells
-      do in=1,num_vert_cell(ic)
-        iv=cell2node(ic,in)
-
-        nt=0
-        do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
-          ic1=node2cell(i)
-          if (ic/=ic1) nt=nt+1
-        end do
-        grad_cell2neighbr_num(ic,in)=nt
-      end do
-    end do
-
-    do ic=1,num_cells
-      do in=1,num_vert_cell(ic)
-        iv=cell2node(ic,in)
-        if (node2cell_ntot(iv) /=(grad_cell2neighbr_num(ic,in)+1)) then
-          write(*,*) 'error in grad_cell2neighbr_num!'
-          stop 'gradient_cellcntr_setup_ggnb'
-        endif
-      end do
-    end do
-
-    !--------------------------------------------------------------------------!
-    ! step 3: computing weighting coeff for each neighbourig cells for each node of a cell, excluding the donor cell
-    ! step 4: assign pointer
-    !--------------------------------------------------------------------------!
-    allocate(grad_neighbhr_weight(idim), grad_neighbr_ptr(idim))
-    grad_neighbhr_weight(:)=0.d0
-    grad_neighbr_ptr(:)=0
-    nt=0;
-    do ic=1,num_cells
-      do in=1,num_vert_cell(ic)
-        iv=cell2node(ic,in)
-
-        do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
-          ic1=node2cell(i)
-          if (ic/=ic1) then
-            nt=nt+1
-            grad_neighbhr_weight(nt) = interp_nodeweight(iv) * interp_cellweight(i)
-            grad_neighbr_ptr(nt) = ic1
-          endif
-        end do
-      end do
-    end do
-    if (nt/=idim) then
-      write(*,*) 'error in grad_neighbhr_weight!'
-      stop 'gradient_cellcntr_setup_ggnb'
-    endif
-
-    !--------------------------------------------------------------------------!
-    ! step 5: computing weighting coeff of each node for a cell
-    !--------------------------------------------------------------------------!
-    grad_node_weight(:,:,:) = 0.d0
-    do ic=1,num_cells
-      do in=1,num_vert_cell(ic)
-        iv=cell2node(ic,in)
-
-        do ie=1,num_vert_cell(ic)
-          ie1=cell2edge(ic,ie)
+    do ic=1,ncells
+      allocate( ggnb(ic)%coefedg(cell(ic)%nvrt,2) )
+      ggnb(ic)%coefedg(:,:) = 0.d0
+      do in=1,cell(ic)%nvrt
+        iv=cell(ic)%node(in)
+        do ie=1,cell(ic)%nvrt
+          je=cell(ic)%edge(ie)
           do j=1,2
-            iv1=edge2node(ie1,j)
-            if (iv1==iv) then
-              af =edge_area(ie1)
-              nxf=edge_normal(ie1,1) * edge_normal_sign(ic,ie)
-              nyf=edge_normal(ie1,2) * edge_normal_sign(ic,ie)
+            if (j==1) jv=edge(je)%n1
+            if (j==2) jv=edge(je)%n2
+            if (jv==iv) then
+              af =edge(je)%area
+              nxf=edge(je)%nx * cell(ic)%nrmlsign(ie)
+              nyf=edge(je)%ny * cell(ic)%nrmlsign(ie)
 
-              grad_node_weight(ic,in,1)=grad_node_weight(ic,in,1) + af*nxf/2.d0
-              grad_node_weight(ic,in,2)=grad_node_weight(ic,in,2) + af*nyf/2.d0
+              ggnb(ic)%coefedg(in,1)=ggnb(ic)%coefedg(in,1) + af*nxf/2.d0
+              ggnb(ic)%coefedg(in,2)=ggnb(ic)%coefedg(in,2) + af*nyf/2.d0
             endif
           enddo
         enddo
@@ -188,28 +183,27 @@ contains
   subroutine grad_ggnb (fc,dfc)
     implicit  none
 
-    real,intent(in)   :: fc(num_cells)
-    real,intent(out)  :: dfc(num_cells,2)
-    integer           :: i,j, ic,ic1, ie,ie1, in,iv,iv1,iv2, nt
-    real              :: af,nxf,nyf
-    real,allocatable  :: fv(:)
+    real,intent(in)   :: fc(ncells)
+    real,intent(out)  :: dfc(ncells,2)
+    integer           :: i,j, ic,jc, ie,je, in,iv
 
     dfc(:,:)=0.d0
 
-    nt=0;
-    do ic=1,num_cells
-      dfc(ic,1)= grad_ggnb_coef0(ic,1) * fc(ic)
-      dfc(ic,2)= grad_ggnb_coef0(ic,2) * fc(ic)
-      do in=1,num_vert_cell(ic)
-        do i=1,grad_cell2neighbr_num(ic,in)
-          nt=nt+1
-          ic1 = grad_neighbr_ptr(nt)
-          dfc(ic,1) = dfc(ic,1) + grad_node_weight(ic,in,1)*grad_neighbhr_weight(nt)*fc(ic1)
-          dfc(ic,2) = dfc(ic,2) + grad_node_weight(ic,in,2)*grad_neighbhr_weight(nt)*fc(ic1)
+    do ic=1,ncells
+      dfc(ic,1)= ggnb(ic)%coef0(1) * fc(ic)
+      dfc(ic,2)= ggnb(ic)%coef0(2) * fc(ic)
+      i=0
+      do in=1,cell(ic)%nvrt
+        iv=cell(ic)%node(in)
+        do j=1,node(iv)%ncells
+          jc=node(iv)%cell(j)
+          i=i+1
+          dfc(ic,1) = dfc(ic,1) + ggnb(ic)%coefedg(in,1) * ggnb(ic)%coefnb(i) * fc(jc)
+          dfc(ic,2) = dfc(ic,2) + ggnb(ic)%coefedg(in,2) * ggnb(ic)%coefnb(i) * fc(jc)
         end do
       end do
-      dfc(ic,1) = dfc(ic,1)/cell_area(ic)
-      dfc(ic,2) = dfc(ic,2)/cell_area(ic)
+      dfc(ic,1) = dfc(ic,1)/cell(ic)%vol
+      dfc(ic,2) = dfc(ic,2)/cell(ic)%vol
     end do
 
     return
@@ -223,34 +217,34 @@ contains
   subroutine grad_ggnb_exp (fc,dfc)
     implicit  none
 
-    real,intent(in)   :: fc(num_cells)
-    real,intent(out)  :: dfc(num_cells,2)
-    integer           :: i,j, ic,ic1, ie,ie1, in,iv,iv1,iv2, nt
+    real,intent(in)   :: fc(ncells)
+    real,intent(out)  :: dfc(ncells,2)
+    integer           :: i,j, ic,jc, ie,je, in,iv,iv1,iv2
     real              :: af,nxf,nyf
     real,allocatable  :: fv(:)
 
     dfc(:,:)=0.d0
 
-    allocate(fv(num_nodes))
+    allocate(fv(nnodes))
 
-    call interpolate_cellcntr2node(fc,fv)
+    call interpolate_cell2node(fc,fv)
 
-    do ic=1,num_cells
-      do ie=1,num_vert_cell(ic)
-        ie1=cell2edge(ic,ie)
+    do ic=1,ncells
+      do ie=1,cell(ic)%nvrt
+        je=cell(ic)%edge(ie)
 
-        af =edge_area(ie1)
-        nxf=edge_normal(ie1,1) * edge_normal_sign(ic,ie)
-        nyf=edge_normal(ie1,2) * edge_normal_sign(ic,ie)
+        af =edge(je)%area
+        nxf=edge(je)%nx * cell(ic)%nrmlsign(ie)
+        nyf=edge(je)%ny * cell(ic)%nrmlsign(ie)
 
-        iv1=edge2node(ie1,1)
-        iv2=edge2node(ie1,2)
+        iv1=edge(je)%n1
+        iv2=edge(je)%n2
 
         dfc(ic,1) = dfc(ic,1) + nxf*af * (fv(iv1)+fv(iv2))/2.d0
         dfc(ic,2) = dfc(ic,2) + nyf*af * (fv(iv1)+fv(iv2))/2.d0
       enddo
-      dfc(ic,1) = dfc(ic,1)/cell_area(ic)
-      dfc(ic,2) = dfc(ic,2)/cell_area(ic)
+      dfc(ic,1) = dfc(ic,1)/cell(ic)%vol
+      dfc(ic,2) = dfc(ic,2)/cell(ic)%vol
     enddo
 
     deallocate(fv)

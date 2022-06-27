@@ -1,24 +1,26 @@
 module gradient_lsq
 
-  use input,  only  : grad_cellcntr_lsq_pow, lgrad_lsq_fn1, lgrad_lsq_fn2, lgrad_lsq_nn
+  use input,  only  : grad_cellcntr_lsq_pow, lgrad_lsq_fn, lgrad_lsq_nn
+  use data_type
   use grid_procs
   use interpolation
 
   implicit none
 
   private
-  integer,allocatable,save  :: cell_neighbr_lsq_ptr(:,:)
   real,save                 :: lsq_p
 
-  ! LSQ base on fn1 stencil
-  real,allocatable,save     :: grad_lsq_coef_fn1(:,:,:), grad_lsq_w_fn1(:,:)
+  type lsq_type
+    integer                       :: ncells
+    integer,dimension(:),pointer  :: cell
+    real,dimension(:),pointer     :: w
+    real,dimension(:,:),pointer   :: coef
+  end type lsq_type
 
-  ! LSQ based nn stencil
-  real,allocatable          :: grad_lsq_coef_nn (:,:), grad_lsq_w_nn(:)
+  type(lsq_type),dimension(:),pointer  :: lsq
 
-
-  private :: init, setup_fn1, setup_nn
-  public  :: grad_lsq_init, grad_lsq_fn1, grad_lsq_nn
+  private :: setup_fn, setup_nn
+  public  :: grad_lsq_init, grad_lsq_fn, grad_lsq_nn
 
 contains
 
@@ -31,23 +33,22 @@ contains
     lsq_p = grad_cellcntr_lsq_pow
 
     !--------------------------------------------------------------------------!
-    ! setup gradient opertor at cell centers: Green-Gauss cell-based (ggcb)
+    ! allocation
     !--------------------------------------------------------------------------!
-    call init
+    allocate(lsq(ncells))
 
 
     !--------------------------------------------------------------------------!
     ! setup gradient opertor at cell centers: Green-Gauss node-based (ggnb)
     !--------------------------------------------------------------------------!
-    if (lgrad_lsq_fn1) then
+    if (lgrad_lsq_fn) then
       !--  setup gradient opertor at cell centers: Green-Gauss node-based (ggnb)
-      call setup_fn1
+      call setup_fn
 
     elseif (lgrad_lsq_nn) then
       !-- setup gradient opertor at cell centers: Green-Gauss node-based (ggnb)
       call setup_nn
     endif
-
 
     return
   end subroutine grad_lsq_init
@@ -56,177 +57,112 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine init
+  subroutine setup_fn
     implicit  none
 
-    integer               :: ndim,i,j,nt, ie,ie1,ic,ic1,ic2, iv1,iv2
-    integer               :: k,jc,jc1,je,je1,je2,jv1,jv2, kv1,kv2
-    real                  :: r(2),dum
-    integer,allocatable   :: tmpi2d(:,:)
+    real                              :: r(2),dum
     type(kdtree2_result),allocatable	:: fnearest(:)
     integer                           :: num_nearests
-
-    allocate(cell_neighbr_lsq_ptr(num_cells,num_vert_max))
-
-    allocate(tmpi2d(num_cells,num_vert_max))
-
-    tmpi2d(:,:) = cell_neighbr_ptr(:,:)
-
-    do ic=1,num_cells
-      if (cell_neighbr_num(ic)==1) then
-        do ie=1,num_vert_cell(ic)
-          ic1=cell_neighbr_ptr(ic,ie)
-          ie1=cell2edge(ic,ie)
-          iv1=edge2node(ie1,1)
-          iv2=edge2node(ie1,2)
-
-          if (ic1==ic) then
-            do je=1,num_vert_cell(ic)
-              je1=cell2edge(ic,je)
-              jc1=cell_neighbr_ptr(ic,je)
-              if (je1/=ie1 .and. jc1/=ic) then
-                !write(*,*) ic,ie,je,jc1
-                jv1=edge2node(je1,1)
-                jv2=edge2node(je1,2)
-                if (jv1==iv1.or.jv1==iv2.or.jv2==iv1.or.jv2==iv2)  then
-                  do k=1,num_vert_cell(jc1)
-                    kv1=edge2node(cell2edge(jc1,k),1)
-                    kv2=edge2node(cell2edge(jc1,k),2)
-                    if ( (kv1-iv1)*(kv1-iv2)*(kv2-iv1)*(kv2-iv2)==0 ) then
-                      !write(*,*)  ic,jc1,cell_neighbr_ptr(jc1,k) !ic,ie,je,jc1,
-                      if (cell_neighbr_ptr(jc1,k)/=jc1.and.cell_neighbr_ptr(jc1,k)/=ic1) tmpi2d(ic,ie)=cell_neighbr_ptr(jc1,k)
-                    endif
-                  enddo
-                endif
-              endif
-            enddo
-          endif
-        enddo
-      endif
-    enddo
+    integer                           :: i,j,k, ic,jc,in, izb,nt,tmpi(4)
+    real                              :: g(2,2),gi(2,2), det,xc,yc,xc1,yc1,w,dis
+    real,allocatable                  :: d(:,:),dt(:,:)
 
 
-    num_nearests=8
+    !--------------------------------------------------------------------------!
+    ! find additional cells for boundary cells
+    ! each cell should have 3 neighboring cells
+    !--------------------------------------------------------------------------!
+    num_nearests = 8;
     allocate(fnearest(num_nearests))
-    do ic=1,num_cells
-      r(1)=cell_center(ic,1)
-      r(2)=cell_center(ic,2)
 
-      if (cell_neighbr_num(ic)==2) then
-        do ie=1,num_vert_cell(ic)
-          if (cell_neighbr_ptr(ic,ie)==ic) ie1=ie
-        enddo
+    do ic=1,ncells
+      allocate(lsq(ic)%cell(cell(ic)%nvrt))
 
+      lsq(ic)%ncells=3
+
+      lsq(ic)%cell(:)=0
+      r(1)=cell(ic)%x
+      r(2)=cell(ic)%y
+      tmpi(:)=0
+      izb=0
+      do in=1,cell(ic)%nvrt
+        jc=cell(ic)%nghbr(in)
+        if (jc==0) then
+          izb=izb+1
+          tmpi(izb)=in
+        else
+          lsq(ic)%cell(in)=jc
+        endif
+      enddo
+      if (izb>0 .and. izb<3) then
         call kdtree2_n_nearest(tp=tree_cellcntr,qv=r,nn=num_nearests,results=fnearest)
-
+        nt=0
         outer: do i=1,num_nearests
-          ic1=fnearest(i)%idx
-          dum=1.d0
-          do ie=1,num_vert_cell(ic)
-            dum=dum*max(0,abs(cell_neighbr_ptr(ic,ie)-ic1))
-          enddo
-          if (dum>0.d0) then
-            tmpi2d(ic,ie1)=ic1
-            !write(*,*) ic,ic1,i,cell_neighbr_ptr(ic,ie)
-            exit outer
+          jc=fnearest(i)%idx
+          if (jc/=ic) then
+            dum=1.d0
+            do in=1,cell(ic)%nvrt
+              dum=dum*max(0,abs(cell(ic)%nghbr(in)-jc))
+            enddo
+
+            if (dum>0.d0) then
+              nt=nt+1
+              if (lsq(ic)%cell(tmpi(nt))>0) write(*,*) 'lsqfn: no way'
+              lsq(ic)%cell(tmpi(nt))=jc
+            endif
+            if (nt==izb) exit outer
           endif
         enddo outer
       endif
+
     enddo
 
 
-
-    ! do ic=1,num_cells
-    !   if (cell_neighbr_num(ic)==1) then
-    !     !write(*,*) ic
-    !     do ie=1,num_vert_cell(ic)
-    !       !write(*,*) ie,tmpi2d(ic,ie)
-    !     enddo
-    !   endif
-    ! enddo
-    ! write(*,*)
-    ! do ic=1,num_cells
-    !   if (cell_neighbr_num(ic)==2) then
-    !     write(*,*) ic
-    !     do ie=1,num_vert_cell(ic)
-    !       write(*,*) ie,tmpi2d(ic,ie)
-    !     enddo
-    !   endif
-    ! enddo
-
-    cell_neighbr_lsq_ptr(:,:)=tmpi2d(:,:)
-
-    nt=0
-    open(100,file='lsq_2neighbor.plt')
-    do ic=1,num_cells
-      if (cell_neighbr_num(ic)==2 .and. nt<20) then
-        nt=nt+1
-        !write(100,'(a)') 'TITLE ="grid"'
-        write(100,'(a)') 'VARIABLES ="x", "y"'
-        write(100,'(a)') 'zone i=4, j=1, f=point'
-        write(100,*) cell_center(ic,1),cell_center(ic,2)
-        do ie=1,3 !num_vert_cell(ic)
-          ic1=cell_neighbr_lsq_ptr(ic,ie)
-          write(100,*) cell_center(ic1,1),cell_center(ic1,2)
-        enddo
-      endif
-    enddo
-    close(100)
-
-    return
-  end subroutine init
-
-
-  !============================================================================!
-  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
-  !============================================================================!
-  subroutine setup_fn1
-    implicit  none
-
-    integer     :: i,j,k, ic,ic1,ic2, ie,ie1,ie2, iv,iv1,iv2
-    real        :: d(num_vert_max,2), dt(2,num_vert_max), g(2,2), gi(2,2), det,xc,yc,xc1,yc1,w,dis
-
-
-    allocate(grad_lsq_coef_fn1(num_cells,2,num_vert_max), grad_lsq_w_fn1(num_cells,num_vert_max))
-    grad_lsq_coef_fn1(:,:,:) = 0.d0
-    grad_lsq_w_fn1(:,:)=0.d0
-
     !--------------------------------------------------------------------------!
-    ! Least squares
+    ! compute LSQ coefficents and weights
     !--------------------------------------------------------------------------!
-    grad_lsq_coef_fn1(:,:,:)=0.d0
-    do ic=1,num_cells
-      xc=cell_center(ic,1)
-      yc=cell_center(ic,2)
-      do ie=1,num_vert_cell(ic)
-        ie1=cell2edge(ic,ie)
-        ic1=cell_neighbr_lsq_ptr(ic,ie)
+    cell_loop: do ic=1,ncells
+      xc=cell(ic)%x
+      yc=cell(ic)%y
 
-        xc1=cell_center(ic1,1)
-        yc1=cell_center(ic1,2)
+      !-- allocation
+      allocate(lsq(ic)%w(cell(ic)%nvrt))
+      allocate(lsq(ic)%coef(2,cell(ic)%nvrt))
+      allocate(d(cell(ic)%nvrt,2), dt(2,cell(ic)%nvrt))
+
+      !-- initialize
+      lsq(ic)%w(:)=0.d0
+      lsq(ic)%coef(:,:)=0.d0
+      d (:,:)=0.d0
+      dt(:,:)=0.d0
+
+      !-- loop over cell nodes
+      do in=1,cell(ic)%nvrt
+        jc=lsq(ic)%cell(in)
+
+        xc1=cell(jc)%x
+        yc1=cell(jc)%y
 
         dis=dsqrt( (xc1-xc)**2 + (yc1-yc)**2 );
         w=0.d0
-        if (dis==0.d0) then
-          grad_lsq_w_fn1(ic,ie)=0.d0
-        else
+        if (dis>0.d0) then
           w=1.d0/dis**lsq_p
-          grad_lsq_w_fn1(ic,ie)=w;
+          lsq(ic)%w(in)=w;
         endif
 
-        d(ie,1)=w*(xc1-xc);
-        d(ie,2)=w*(yc1-yc);
+        d(in,1)=w*(xc1-xc);
+        d(in,2)=w*(yc1-yc);
 
-        dt(1,ie)=d(ie,1)
-        dt(2,ie)=d(ie,2)
+        dt(1,in)=d(in,1)
+        dt(2,in)=d(in,2)
       enddo
 
       !-- compute G= d^T * d
       g(:,:)=0.d0
       do i=1,2
         do j=1,2
-          do ie=1,num_vert_cell(ic)
-            g(i,j)= g(i,j) + dt(i,ie)*d(ie,j)
+          do in=1,cell(ic)%nvrt
+            g(i,j)= g(i,j) + dt(i,in)*d(in,j)
           enddo
         enddo
       enddo
@@ -241,21 +177,23 @@ contains
 
       !-- compute G^-1 * d^T
       do i=1,2
-        do ie=1,num_vert_cell(ic)
+        do in=1,cell(ic)%nvrt
           do k=1,2
-            grad_lsq_coef_fn1(ic,i,ie)= grad_lsq_coef_fn1(ic,i,ie) + gi(i,k)*dt(k,ie)
+            lsq(ic)%coef(i,in)= lsq(ic)%coef(i,in) + gi(i,k)*dt(k,in)
           enddo
         enddo
       enddo
-    enddo
 
-    do ic=1,num_cells
+      deallocate(d,dt)
+    enddo cell_loop
+
+    do ic=1,ncells
       !if (cell_neighbr_num(ic)==1) grad_lsq_coef(ic,:,:)=0.d0
     enddo
 
 
     return
-  end subroutine setup_fn1
+  end subroutine setup_fn
 
 
   !============================================================================!
@@ -264,55 +202,108 @@ contains
   subroutine setup_nn
     implicit  none
 
-    integer           :: i,j,k, ic,ic1,ic2, ie,ie1,ie2, iv,iv1,iv2, nt,nt1, iptr
-    real,allocatable  :: d(:,:), dt(:,:), wrk(:,:)
-    real              :: g(2,2), gi(2,2), det,xc,yc,xc1,yc1,w,dis
+    real,allocatable    :: d(:,:), dt(:,:), wrk(:,:)
+    real                :: g(2,2), gi(2,2), det,xc,yc,xc1,yc1,w,dis
+    integer             :: i,j,k, ic,jc,in, iv
+    integer             :: min_tmp, max_tmp, nt
+    integer,allocatable :: tmp(:), tmp_unq(:)
 
-    nt=sum(cell_neighbr_nn_num)
-    allocate(grad_lsq_coef_nn(nt,2), grad_lsq_w_nn(nt))
-    grad_lsq_coef_nn(:,:) = 0.d0
-    grad_lsq_w_nn(:)=0.d0
+
+    !--------------------------------------------------------------------------!
+    ! find additional cells for boundary cells
+    ! each cell should have 3 neighboring cells
+    !--------------------------------------------------------------------------!
+    do ic=1,ncells
+
+      !-- step 1: get total number of surrounding cells; there will dublicates
+      nt=0
+      do in=1,cell(ic)%nvrt
+        iv=cell(ic)%node(in)
+        do i=1,node(iv)%ncells
+          jc=node(iv)%cell(i)
+          if (ic/=jc) nt=nt+1
+        end do
+      end do
+
+      !-- step 2: allocate and assign the surrounding cells index
+      allocate(tmp(nt), tmp_unq(nt))
+      nt=0
+      do in=1,cell(ic)%nvrt
+        iv=cell(ic)%node(in)
+        do i=1,node(iv)%ncells
+          jc=node(iv)%cell(i)
+          if (ic/=jc) then
+            nt=nt+1
+            tmp(nt)=jc
+          endif
+        end do
+      end do
+
+      !--- step 3: remove duplicates
+      nt=0
+      min_tmp = minval(tmp)-1
+      max_tmp = maxval(tmp)
+      do while (min_tmp<max_tmp)
+        nt = nt+1
+        min_tmp = minval(tmp, mask=tmp>min_tmp)
+        tmp_unq(nt) = min_tmp
+      enddo
+      tmp(1:nt)=tmp_unq(1:nt)
+
+      lsq(ic)%ncells=nt
+      allocate( lsq(ic)%cell(nt) )
+      do i=1,nt
+        lsq(ic)%cell(i) = tmp(i)
+      enddo
+
+      deallocate(tmp,tmp_unq)
+    end do
+
 
     !--------------------------------------------------------------------------!
     ! Least squares
     !--------------------------------------------------------------------------!
     nt=0
-    do ic=1,num_cells
-      xc=cell_center(ic,1)
-      yc=cell_center(ic,2)
+    do ic=1,ncells
+      xc=cell(ic)%x
+      yc=cell(ic)%y
 
-      allocate(d(cell_neighbr_nn_num(ic),2), dt(2,cell_neighbr_nn_num(ic)), wrk(2,cell_neighbr_nn_num(ic)) )
+      !--allocation
+      allocate( lsq(ic)%w(lsq(ic)%ncells) )
+      allocate( lsq(ic)%coef(2,lsq(ic)%ncells) )
+      allocate( d(lsq(ic)%ncells,2), dt(2,lsq(ic)%ncells), wrk(2,lsq(ic)%ncells) )
 
-      nt1=0
-      do iptr=nt+1,nt+cell_neighbr_nn_num(ic)
-        ic1=cell_neighbr_nn_ptr(iptr)
+      !--initialize
+      lsq(ic)%w(:)=0.d0
+      lsq(ic)%coef(:,:)=0.d0
+      d (:,:)=0.d0
+      dt(:,:)=0.d0
 
-        nt1=nt1+1
+      do i=1,lsq(ic)%ncells
+        jc=lsq(ic)%cell(i)
 
-        xc1=cell_center(ic1,1)
-        yc1=cell_center(ic1,2)
+        xc1=cell(jc)%x
+        yc1=cell(jc)%y
 
         dis=dsqrt( (xc1-xc)**2 + (yc1-yc)**2 );
         w=0.d0
-        if (dis==0.d0) then
-          grad_lsq_w_nn(iptr)=0.d0
-        else
+        if (dis>0.d0) then
           w=1.d0/dis**lsq_p
-          grad_lsq_w_nn(iptr)=w;
+          lsq(ic)%w(i)=w;
         endif
 
-        d(nt1,1)=w*(xc1-xc);
-        d(nt1,2)=w*(yc1-yc);
+        d(i,1)=w*(xc1-xc);
+        d(i,2)=w*(yc1-yc);
 
-        dt(1,nt1)=d(nt1,1)
-        dt(2,nt1)=d(nt1,2)
+        dt(1,i)=d(i,1)
+        dt(2,i)=d(i,2)
       enddo
 
       !-- compute G= d^T * d
       g(:,:)=0.d0
       do i=1,2
         do j=1,2
-          do k=1,cell_neighbr_nn_num(ic)
+          do k=1,lsq(ic)%ncells
             g(i,j)= g(i,j) + dt(i,k)*d(k,j)
           enddo
         enddo
@@ -329,22 +320,20 @@ contains
       !-- compute G^-1 * d^T
       wrk(:,:)=0.d0
       do i=1,2
-        do j=1,cell_neighbr_nn_num(ic)
+        do j=1,lsq(ic)%ncells
           do k=1,2
             wrk(i,j)= wrk(i,j) + gi(i,k)*dt(k,j)
           enddo
         enddo
       enddo
 
-      j=0
-      do iptr=nt+1,nt+cell_neighbr_nn_num(ic)
-        j=j+1
-        grad_lsq_coef_nn(iptr,1:2) = wrk(1:2,j)
+
+      do i=1,lsq(ic)%ncells
+        lsq(ic)%coef(1:2,i) = wrk(1:2,i)
       enddo
 
       deallocate(d,dt,wrk)
 
-      nt=nt+cell_neighbr_nn_num(ic)
     enddo
 
     return
@@ -354,23 +343,23 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grad_lsq_fn1 (fc,dfc)
+  subroutine grad_lsq_fn (fc,dfc)
     implicit  none
 
-    real,intent(in)   :: fc(num_cells)
-    real,intent(out)  :: dfc(num_cells,2)
-    integer           :: ic,ic1,ie
+    real,intent(in)   :: fc(ncells)
+    real,intent(out)  :: dfc(ncells,2)
+    integer           :: ic,jc,in
 
-    do ic=1,num_cells
-      do ie=1,num_vert_cell(ic)
-        ic1=cell_neighbr_lsq_ptr(ic,ie)
-        dfc(ic,1) = dfc(ic,1) + grad_lsq_coef_fn1(ic,1,ie)*(fc(ic1)-fc(ic))*grad_lsq_w_fn1(ic,ie)
-        dfc(ic,2) = dfc(ic,2) + grad_lsq_coef_fn1(ic,2,ie)*(fc(ic1)-fc(ic))*grad_lsq_w_fn1(ic,ie)
+    do ic=1,ncells
+      do in=1,cell(ic)%nvrt
+        jc=lsq(ic)%cell(in)
+        dfc(ic,1) = dfc(ic,1) + lsq(ic)%coef(1,in)*(fc(jc)-fc(ic))*lsq(ic)%w(in)
+        dfc(ic,2) = dfc(ic,2) + lsq(ic)%coef(2,in)*(fc(jc)-fc(ic))*lsq(ic)%w(in)
       enddo
     end do
 
     return
-  end subroutine grad_lsq_fn1
+  end subroutine grad_lsq_fn
 
 
   !============================================================================!
@@ -379,18 +368,16 @@ contains
   subroutine grad_lsq_nn (fc,dfc)
     implicit  none
 
-    real,intent(in)   :: fc(num_cells)
-    real,intent(out)  :: dfc(num_cells,2)
-    integer           :: ic,ic1,nt,iptr
+    real,intent(in)   :: fc(ncells)
+    real,intent(out)  :: dfc(ncells,2)
+    integer           :: ic,jc,i
 
-    nt=0
-    do ic=1,num_cells
-      do iptr=nt+1,nt+cell_neighbr_nn_num(ic)
-        ic1=cell_neighbr_nn_ptr(iptr)
-        dfc(ic,1) = dfc(ic,1) + grad_lsq_coef_nn(iptr,1)*(fc(ic1)-fc(ic))*grad_lsq_w_nn(iptr)
-        dfc(ic,2) = dfc(ic,2) + grad_lsq_coef_nn(iptr,2)*(fc(ic1)-fc(ic))*grad_lsq_w_nn(iptr)
+    do ic=1,ncells
+      do i=1,lsq(ic)%ncells
+        jc=lsq(ic)%cell(i)
+        dfc(ic,1) = dfc(ic,1) + lsq(ic)%coef(1,i)*(fc(jc)-fc(ic))*lsq(ic)%w(i)
+        dfc(ic,2) = dfc(ic,2) + lsq(ic)%coef(2,i)*(fc(jc)-fc(ic))*lsq(ic)%w(i)
       enddo
-      nt=nt+cell_neighbr_nn_num(ic)
     end do
 
     return
