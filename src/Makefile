@@ -26,8 +26,8 @@ include ../make.inc
 # Source Files
 #----------------------------------------------------------------------------------------
 OBJS = fvs2d.o
-MODOBJS =	mainparam.o input.o kdtree2.o grid_graph.o grid_procs.o interpolation.o \
-					gradient_ggnb.o gradient_ggcb.o gradient_lsq.o gradient.o \
+MODOBJS =	mainparam.o input.o kdtree2.o data_type.o grid_procs.o interpolation.o \
+					gradient_ggcb.o gradient_ggnb.o gradient_lsq.o gradient.o \
 					test.o
 
 
