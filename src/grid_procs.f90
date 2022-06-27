@@ -260,7 +260,7 @@ module grid_procs
         endif
       end do cell_nvrt
     end do cells
-
+    
 
     !--------------------------------------------------------------------------!
     ! count number of edges and allocate edge array

@@ -47,6 +47,8 @@ contains
 
     write(*,*)
     write(*,'(a,i0)') 'number of nodes: ',nnodes
+    write(*,'(a,i0)') 'number of cells-triangle: ',ncells_tri
+    write(*,'(a,i0)') 'number of cells-quad: ',ncells_quad
     write(*,'(a,i0)') 'number of cells: ',ncells
     write(*,'(a,i0)') 'number of edges: ',nedges
     ! write(*,'(a,i0)') 'number of bondary nodes: ',num_nodes_bndry
@@ -69,17 +71,20 @@ contains
     close(100)
 
     open(100,file='grid_cell_neighbor.plt')
-    do ic=1,1001,50
+    do ic=1,ncells,4
       write(100,'(a)') 'VARIABLES ="X", "Y"'
       write(100,'(a)') 'zone i=1, j=1, f=point'
       write(100,*) cell(ic)%x,cell(ic)%y
       do i=1,cell(ic)%nnghbrs
+        if (i>4) write(*,*) 'wow'
         jc=cell(ic)%nghbr(i)
-        if (ic>0) then
+        !write(*,*) jc
+        if (jc>0) then
           write(100,'(a)') ' '
           write(100,'(a)') 'TITLE ="grid"'
           write(100,'(a)') 'VARIABLES ="X", "Y"'
-          write(100,'(a,i0,a)') 'ZONE T="VOL_MIXED",N=', cell(jc)%nvrt, ' E=1, ET=TRIANGLE F=FEPOINT'
+          if (cell(jc)%nvrt==3) write(100,'(a,i0,a)') 'ZONE T="VOL_MIXED",N=', cell(jc)%nvrt, ' E=1, ET=TRIANGLE F=FEPOINT'
+          if (cell(jc)%nvrt==4) write(100,'(a)') 'ZONE N=4, ELEMENTS=1, DATAPACKING=POINT, ZONETYPE=FEQUADRILATERAL'
           do j=1,cell(jc)%nvrt
             write(100,*) node(cell(jc)%node(j))%x, node(cell(jc)%node(j))%y
           enddo
@@ -230,7 +235,11 @@ contains
     fout='test_interp.plt'
     allocate(fw(nnodes,1))
     fw(:,1)=fv(:)
-    call test_tecplot(fout,1,fw)
+    if (ncells_quad>0) then
+      call test_tecplot_mixed(fout,1,fw)
+    else
+      call test_tecplot(fout,1,fw)
+    endif
     deallocate(fw)
 
 
@@ -324,6 +333,53 @@ contains
 
     return
   end subroutine test_tecplot
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine test_tecplot_mixed (fout,nvar,f)
+    implicit none
+
+    integer,intent(in)  :: nvar
+    real,intent(in)     :: f(nnodes,nvar)
+    character(len=*)    :: fout
+
+    integer             :: i,j,k
+
+    open(100,file=trim(fout))
+    write(100,'(a)') 'TITLE ="grid_sol"'
+    if (nvar==1) then
+      write(100,'(a)') 'VARIABLES ="x", "y", "f1"'
+      write(100,'(a,i0,a,i0,a)') 'ZONE NODES=',nnodes, ' ELEMENTS=',ncells, ' DATAPACKING=POINT, ZONETYPE=FEQUADRILATERAL'
+      do i=1,nnodes
+        write(100,'(3(e19.8,1x))') node(i)%x,node(i)%y, f(i,1)
+      enddo
+    elseif (nvar==2) then
+      write(100,'(a)') 'VARIABLES ="x", "y", "f1", "f2"'
+      write(100,'(a,i0,a,i0,a)') 'ZONE NODES=',nnodes, ' ELEMENTS=',ncells, ' DATAPACKING=POINT, ZONETYPE=FEQUADRILATERAL'
+      do i=1,nnodes
+        write(100,'(4(e19.8,1x))') node(i)%x,node(i)%y, f(i,1),f(i,2)
+      enddo
+    else
+      write(100,'(a)') 'VARIABLES ="x", "y", "f1", "U"'
+      write(100,'(a,i0,a,i0,a)') 'ZONE NODES=',nnodes, ' ELEMENTS=',ncells, ' DATAPACKING=POINT, ZONETYPE=FEQUADRILATERAL'
+      do i=1,nnodes
+        write(100,'(5(e19.8,1x))') node(i)%x,node(i)%y, f(i,1),f(i,2), f(i,3)
+      enddo
+    endif
+    do i=1,ncells_tri
+        write(100,*) cell(i)%node(1),cell(i)%node(2),cell(i)%node(3),cell(i)%node(3)
+    enddo
+    do i=1,ncells_quad
+      k=i+ncells_tri
+        write(100,*) (cell(k)%node(j),j=1,4)
+    enddo
+    close(100)
+
+
+    return
+  end subroutine test_tecplot_mixed
 
 
   !============================================================================!
