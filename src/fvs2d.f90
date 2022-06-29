@@ -5,6 +5,7 @@ program fvs2d
   use grid_procs
   use interpolation
   use gradient
+  use mms_euler2d
   use test
 
   use mpi
@@ -64,6 +65,12 @@ program fvs2d
   ! gradient setup
   !-------------------------------------------------------------------------------
   call gradient_init
+
+
+  !-------------------------------------------------------------------------------
+  ! compute source term for euler equation
+  !-------------------------------------------------------------------------------
+  call compute_source_euler
 
 
   !-------------------------------------------------------------------------------
