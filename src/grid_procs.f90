@@ -115,7 +115,7 @@ module grid_procs
     integer             :: i,j,k,ii,ic,jc,iv,vp
     integer             :: v1,v2,v3,v4, vL,vR, in,im, ie,je
     integer,allocatable :: locedge(:)
-    real                :: xc,yc, x1,x2,x3,x4, y1,y2,y3,y4, dx,dy
+    real                :: xc,yc, x1,x2,x3,x4, y1,y2,y3,y4, dx,dy, xf,yf
     real,allocatable    :: tmpr(:,:)
     logical             :: lfound
 
@@ -260,7 +260,7 @@ module grid_procs
         endif
       end do cell_nvrt
     end do cells
-    
+
 
     !--------------------------------------------------------------------------!
     ! count number of edges and allocate edge array
@@ -490,6 +490,25 @@ module grid_procs
 
       edge(i)%tx = dx/edge(i)%area
       edge(i)%ty = dy/edge(i)%area
+    enddo
+
+
+    !--------------------------------------------------------------------------!
+    ! build position vector from cell center to cell-edges
+    !--------------------------------------------------------------------------!
+    do ic=1,ncells
+      xc=cell(ic)%x
+      yc=cell(ic)%y
+      allocate(cell(ic)%pos2edg(cell(ic)%nvrt,2))
+      do ie=1,cell(ic)%nvrt
+        je=cell(ic)%edge(ie)
+
+        xf=edge(je)%x
+        yf=edge(je)%y
+
+        cell(ic)%pos2edg(ie,1) = xf-xc
+        cell(ic)%pos2edg(ie,2) = yf-yc
+      enddo
     enddo
 
 
