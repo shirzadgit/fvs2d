@@ -19,6 +19,7 @@ module data_type
     integer,dimension(:),pointer  :: edge
     real                          :: x,y,vol
     real,dimension(:),pointer     :: nrmlsign
+    real,dimension(:,:),pointer   :: pos2edg
   end type cell_type
 
 
