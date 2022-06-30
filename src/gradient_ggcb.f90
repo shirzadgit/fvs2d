@@ -1,6 +1,6 @@
 module gradient_ggcb
 
-  use data_type
+  use data_grid
   !use grid_procs
   !use interpolation
 
