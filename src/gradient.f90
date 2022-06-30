@@ -1,6 +1,6 @@
 module gradient
 
-  use data_type
+  use data_grid
   use input
   use grid_procs
   use gradient_ggcb

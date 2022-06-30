@@ -1,7 +1,7 @@
 module gradient_lsq
 
   use input,  only  : grad_cellcntr_lsq_pow, lgrad_lsq_fn, lgrad_lsq_nn
-  use data_type
+  use data_grid
   use grid_procs
   use interpolation
 

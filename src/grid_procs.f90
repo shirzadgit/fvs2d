@@ -2,7 +2,7 @@ module grid_procs
 
   use mainparam, only : iunit_grid
   use input, only     : file_grid
-  use data_type
+  use data_grid
   use kdtree2_module
 
   implicit none
@@ -260,6 +260,35 @@ module grid_procs
         endif
       end do cell_nvrt
     end do cells
+
+
+    !--------------------------------------------------------------------------!
+    ! assign neighbor cell number of local edge(ie) of cell(ic)
+    !--------------------------------------------------------------------------!
+    !-- triangle cells
+    allocate(locedge(3));  locedge(1)=2;  locedge(2)=3;  locedge(3)=1;
+    do ic=1,ncells_tri
+      allocate(cell(ic)%nghbre(cell(ic)%nvrt))
+      cell(ic)%nghbre(:)=0
+      do k=1,cell(ic)%nvrt
+        ie=locedge(k)
+        cell(ic)%nghbre(ie) = cell(ic)%nghbr(k)
+      enddo
+    enddo
+
+    !-- quad cells
+    deallocate(locedge)
+    allocate(locedge(4));  locedge(1)=3;  locedge(2)=4;  locedge(3)=1;  locedge(4)=2
+    do i=1,ncells_quad
+      ic=i+ncells_tri
+      allocate(cell(ic)%nghbre(cell(ic)%nvrt))
+      cell(ic)%nghbre(:)=0
+      do k=1,cell(ic)%nvrt
+        ie=locedge(k)
+        cell(ic)%nghbre(ie) = cell(ic)%nghbr(k)
+      enddo
+    enddo
+    deallocate(locedge)
 
 
     !--------------------------------------------------------------------------!

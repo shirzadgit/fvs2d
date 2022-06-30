@@ -1,10 +1,13 @@
 module test
 
+  use mainparam,  only  : nvar
   use input
-  use data_type
+  use data_grid
   use grid_procs
   use interpolation
   use gradient
+  use residual, only  : compute_residual
+  use mms_euler2d
 
   implicit none
 
@@ -20,13 +23,16 @@ contains
 
     allocate(fve(nnodes), fce(ncells), dfve(nnodes,2), dfce(ncells,2))
 
-    call test_analytic
 
-    call test_grid
+    call test_resid
 
-    call test_interpolation
-
-    call test_gradient
+    ! call test_analytic
+    !
+    ! call test_grid
+    !
+    ! call test_interpolation
+    !
+    ! call test_gradient
 
     return
   end subroutine test_init
@@ -286,6 +292,54 @@ contains
 
     return
   end subroutine test_gradient
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine test_resid
+
+    implicit none
+
+    real,allocatable  :: resid(:,:), wrk1(:), wrk2(:,:), wrk3(:)
+    character         :: fout*124
+
+
+    allocate(resid(1:nvar,1:ncells), wrk1(nnodes), wrk3(nnodes), wrk2(nnodes,2))
+
+    call compute_residual (resid)
+
+
+    call interpolate_cell2node(resid(1:1,1:ncells),wrk1)
+    call interpolate_cell2node(mms_source(1:1,1:ncells),wrk3)
+    wrk2(:,1)=wrk1(:)
+    wrk2(:,2)=wrk3(:)
+    fout='test_resid_rho.plt'
+    call test_tecplot(fout,2,wrk2)
+
+    call interpolate_cell2node(resid(2:2,1:ncells),wrk1)
+    call interpolate_cell2node(mms_source(2:2,1:ncells),wrk3)
+    wrk2(:,1)=wrk1(:)
+    wrk2(:,2)=wrk3(:)
+    fout='test_resid_u.plt'
+    call test_tecplot(fout,2,wrk2)
+
+    call interpolate_cell2node(resid(3:3,1:ncells),wrk1)
+    call interpolate_cell2node(mms_source(3:3,1:ncells),wrk3)
+    wrk2(:,1)=wrk1(:)
+    wrk2(:,2)=wrk3(:)
+    fout='test_resid_v.plt'
+    call test_tecplot(fout,2,wrk2)
+
+    call interpolate_cell2node(resid(4:4,1:ncells),wrk1)
+    call interpolate_cell2node(mms_source(4:4,1:ncells),wrk3)
+    wrk2(:,1)=wrk1(:)
+    wrk2(:,2)=wrk3(:)
+    fout='test_resid_e.plt'
+    call test_tecplot(fout,2,wrk2)
+
+    return
+  end subroutine test_resid
 
 
   !============================================================================!

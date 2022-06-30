@@ -1,6 +1,6 @@
 module interpolation
 
-  use data_type
+  use data_grid
   use grid_procs
 
   implicit none

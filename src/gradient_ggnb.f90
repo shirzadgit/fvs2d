@@ -1,6 +1,6 @@
 module gradient_ggnb
 
-  use data_type
+  use data_grid
   use interpolation
 
   implicit none
