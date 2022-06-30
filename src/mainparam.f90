@@ -1,8 +1,11 @@
 module mainparam
   implicit none
 
-  !-- #'s MPI processors  
-  integer,save            :: nproc,proc_id  
+  !--number of variables (2d --> nvar=4, rho,u,v,p;   3d --> nvar=4, rho,u,v,w,p)
+  integer,parameter       :: nvar=4
+
+  !-- #'s MPI processors
+  integer,save            :: nproc,proc_id
 
   !-- OpenMP parameters
   integer,save            :: omp_nthreads
