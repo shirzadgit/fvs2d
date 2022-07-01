@@ -13,7 +13,7 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine flux_invscid_roe (pvarL, pvarR, nx,ny,  flux)
+  subroutine flux_invscid_roe (pvarL,pvarR, nx,ny,  flux)
     implicit none
 
     real,intent(in)   :: pvarL(nvar), pvarR(nvar), nx,ny
@@ -72,7 +72,7 @@ contains
     ws(3) = abs(un)
     ws(4) = abs(un+a)
 
-    !--Harten's Entropy Fix JCP(1983), 49, pp357-393: only for the nonlinear fields.
+    !-- Harten's entropy fix, ref: J. Comp. Phys., vol 49, pp:357-393, 1983
     dws(1) = 1.d0/5.d0
     if ( ws(1) < dws(1) ) ws(1) = 0.5d0 * ( ws(1)*ws(1)/dws(1)+dws(1) )
     dws(4) = 1.d0/5.d0
@@ -93,7 +93,7 @@ contains
       end do
     end do
 
-    !-- Compute the flux.
+    !-- Compute left & right flux.
     fL(1) = rhoL*unL
     fL(2) = rhoL*unL * uL + pL*nx
     fL(3) = rhoL*unL * vL + pL*ny
@@ -106,6 +106,8 @@ contains
 
     !-- Roe's flux
     flux = 0.5d0 * (fL + fR - diss)
+
+    !flux = fL;
 
     return
   end subroutine flux_invscid_roe
