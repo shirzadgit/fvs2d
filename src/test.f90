@@ -26,13 +26,13 @@ contains
 
     call test_resid
 
-    ! call test_analytic
+    call test_analytic
     !
     ! call test_grid
     !
     ! call test_interpolation
     !
-    ! call test_gradient
+    call test_gradient
 
     return
   end subroutine test_init
@@ -99,6 +99,23 @@ contains
           enddo
         endif
       enddo
+    enddo
+    close(100)
+
+
+    open(100,file='grid_interior.plt')
+    write(100,*) 'variables = "X" "Y"'
+    do i=1,ncells_intr
+      ic=cell_intr(i)
+      write(100,*) cell(ic)%x,cell(ic)%y
+    enddo
+    close(100)
+
+    open(100,file='grid_boundarry.plt')
+    write(100,*) 'variables = "X" "Y"'
+    do i=1,ncells_bndr
+      ic=cell_bndr(i)
+      write(100,*) cell(ic)%x,cell(ic)%y
     enddo
     close(100)
 
@@ -312,28 +329,28 @@ contains
 
     call interpolate_cell2node(resid(1:1,1:ncells),wrk1)
     call interpolate_cell2node(mms_source(1:1,1:ncells),wrk3)
-    wrk2(:,1)=wrk1(:)
+    wrk2(:,1)=abs(wrk1(:)-wrk3(:))
     wrk2(:,2)=wrk3(:)
     fout='test_resid_rho.plt'
     call test_tecplot(fout,2,wrk2)
 
     call interpolate_cell2node(resid(2:2,1:ncells),wrk1)
     call interpolate_cell2node(mms_source(2:2,1:ncells),wrk3)
-    wrk2(:,1)=wrk1(:)
+    wrk2(:,1)=abs(wrk1(:)-wrk3(:))
     wrk2(:,2)=wrk3(:)
     fout='test_resid_u.plt'
     call test_tecplot(fout,2,wrk2)
 
     call interpolate_cell2node(resid(3:3,1:ncells),wrk1)
     call interpolate_cell2node(mms_source(3:3,1:ncells),wrk3)
-    wrk2(:,1)=wrk1(:)
+    wrk2(:,1)=abs(wrk1(:)-wrk3(:))
     wrk2(:,2)=wrk3(:)
     fout='test_resid_v.plt'
     call test_tecplot(fout,2,wrk2)
 
     call interpolate_cell2node(resid(4:4,1:ncells),wrk1)
     call interpolate_cell2node(mms_source(4:4,1:ncells),wrk3)
-    wrk2(:,1)=wrk1(:)
+    wrk2(:,1)=abs(wrk1(:)-wrk3(:))
     wrk2(:,2)=wrk3(:)
     fout='test_resid_e.plt'
     call test_tecplot(fout,2,wrk2)
