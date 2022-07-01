@@ -5,25 +5,12 @@ module data_sol
 
   implicit none
 
-  ! !----------------------------------------------------------------------------!
-  ! ! data type for solution at cell centers
-  ! !----------------------------------------------------------------------------!
-  ! type cell_sol
-  !   real                          :: r,u,v,p
-  ! end type cell_sol
-  !
-  ! !----------------------------------------------------------------------------!
-  ! ! data type for solution at cell vertices
-  ! !----------------------------------------------------------------------------!
-  ! type node_sol
-  !   real                          :: r,u,v,p
-  ! end type node_sol
+  ! Primitive variables
+  ! ivar=1, density
+  ! ivar=2, u-velocity
+  ! ivar=3, v-velocity
+  ! ivar=4, pressure
 
-  !----------------------------------------------------------------------------!
-  ! allocatable data
-  !----------------------------------------------------------------------------!
-  ! type(cell_sol),dimension(:),pointer  :: pvar, cvar
-  ! type(node_sol),dimension(:),pointer  :: npvar
   real,allocatable    :: pvar(:,:)
 
 
@@ -37,8 +24,6 @@ contains
   subroutine data_sol_allocate
     implicit none
 
-    ! allocate(pvar(ncells))
-    ! allocate(npvar(nnodes))
 
     allocate(pvar(nvar,ncells))
 
@@ -54,7 +39,6 @@ contains
     implicit none
 
     deallocate(pvar)
-    !deallocate(npvar)
 
     return
   end subroutine data_sol_close
