@@ -1,6 +1,7 @@
 module residual
 
   use mainparam,  only  : nvar
+  use input
   use data_grid
   use data_sol,   only  : pvar
   use flux_invscid
@@ -18,6 +19,28 @@ module residual
 
 contains
 
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine residual_init
+    implicit none
+
+    integer   :: ivar,ic
+
+    !--------------------------------------------------------------------------!
+    ! allocate array for face value reconstruction
+    !--------------------------------------------------------------------------!
+    allocate( recnst(nvar, ncells) )
+    do ivar=1,nvar
+      do ic=1,ncells
+        allocate( recnst(ivar,ic)%f(cell(ic)%nvrt) )
+      enddo
+    enddo
+
+
+    return
+  end subroutine residual_init
+
 
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
@@ -28,27 +51,9 @@ contains
     real,intent(out)  :: resid(nvar,ncells)
     integer           :: ic,ie,ivar,je, ieL,ieR, icL,icR, k, idum(4), iloc(1)
     real              :: nxf,nyf,af, flux(nvar), pfL(nvar),pfR(nvar)
-    character         :: numeric_frecnst_type*124
     real,allocatable  :: grad(:,:,:)
 
-    ! ivar=1, density
-    ! ivar=2, u-velocity
-    ! ivar=3, v-velocity
-    ! ivar=4, pressure
-
-    numeric_frecnst_type = 'linear_extrapolation'
-
     resid(:,:) = 0.d0
-
-    !--------------------------------------------------------------------------!
-    ! allocation
-    !--------------------------------------------------------------------------!
-    allocate( recnst(nvar, ncells) )
-    do ivar=1,nvar
-      do ic=1,ncells
-        allocate( recnst(ivar,ic)%f(cell(ic)%nvrt) )
-      enddo
-    enddo
 
 
     !--------------------------------------------------------------------------!
@@ -63,9 +68,8 @@ contains
     !--------------------------------------------------------------------------!
     ! re-construct face-value of primative variables
     !--------------------------------------------------------------------------!
-    if (trim(numeric_frecnst_type)=='linear_extrapolation') then
-
-      !-- linear extrapolation: u(f)=u(i) + <grad(u), r>
+    !-- linear extrapolation
+    if (lface_reconst_linear) then
       do ivar=1,nvar
         do ic=1,ncells
           do ie=1,cell(ic)%nvrt
@@ -74,20 +78,55 @@ contains
         enddo
       enddo
 
-
       !-- apply limiter
+      if (lgrad_limiter) then
+        write(*,*) 'scheme not implemented yet!'
+        stop 'scheme not implemented yet!'
+      endif
 
-
-    else
-      write(*,*) 'only linear_extrapolation implemented so far'
-      stop 'error'
+    !-- unstructred MUSCL
+    elseif (lface_reconst_umuscl) then
+      write(*,*) 'scheme not implemented yet!'
+      stop 'scheme not implemented yet!'
     endif
 
 
     !--------------------------------------------------------------------------!
     ! compute left and right fluxes based on re-constructed face-value
     !--------------------------------------------------------------------------!
-    do icL=1,ncells
+    interior_cells: do ic=1,ncells_intr
+      icL=cell_intr(ic)
+      do ieL=1,cell(icL)%nvrt
+
+        je=cell(icL)%edge(ieL)
+
+        af =edge(je)%area
+        nxf=edge(je)%nx * cell(icL)%nrmlsign(ieL)
+        nyf=edge(je)%ny * cell(icL)%nrmlsign(ieL)
+
+        !-- find cell and edge number of right state
+        icR=cell(icL)%nghbre(ieL)
+        idum(:)= 1
+        do k=1,cell(icR)%nvrt
+          idum(k)=abs( je - cell(icR)%edge(k) )
+        enddo
+        iloc = minloc(idum)
+        ieR=maxval(iloc)
+
+        !-- construct left and right state on each edge
+        pfL(1:nvar) = recnst(1:nvar,icL)%f(ieL)
+        pfR(1:nvar) = recnst(1:nvar,icR)%f(ieR)
+
+        !-- compute inviscid flux
+        call flux_invscid_roe (pfL, pfR, nxf,nyf,  flux)
+
+        resid(1:nvar,icL) = resid(1:nvar,icL) + flux(1:nvar)*af
+      enddo
+    enddo interior_cells
+
+
+    boundary_cells: do ic=1,ncells_bndr
+      icL=cell_bndr(ic)
       do ieL=1,cell(icL)%nvrt
 
         je=cell(icL)%edge(ieL)
@@ -115,12 +154,48 @@ contains
         pfL(1:nvar) = recnst(1:nvar,icL)%f(ieL)
         pfR(1:nvar) = recnst(1:nvar,icR)%f(ieR)
 
-        !-- compute flux
+        !-- compute inviscid flux
         call flux_invscid_roe (pfL, pfR, nxf,nyf,  flux)
 
         resid(1:nvar,icL) = resid(1:nvar,icL) + flux(1:nvar)*af
       enddo
-    enddo
+    enddo boundary_cells
+
+
+    ! do icL=1,ncells
+    !   do ieL=1,cell(icL)%nvrt
+    !
+    !     je=cell(icL)%edge(ieL)
+    !
+    !     af =edge(je)%area
+    !     nxf=edge(je)%nx * cell(icL)%nrmlsign(ieL)
+    !     nyf=edge(je)%ny * cell(icL)%nrmlsign(ieL)
+    !
+    !     !-- find cell and edge number of right state
+    !     icR=cell(icL)%nghbre(ieL)
+    !     if (icR>0) then
+    !       idum(:)= 1
+    !       do k=1,cell(icR)%nvrt
+    !         idum(k)=abs( je - cell(icR)%edge(k) )
+    !       enddo
+    !       iloc = minloc(idum)
+    !       ieR=maxval(iloc)
+    !       if (cell(icR)%edge(ieR)/=je) write(*,*) 'no way'
+    !     else
+    !       icR=icL
+    !       ieR=ieL
+    !     endif
+    !
+    !     !-- construct left and right state on each edge
+    !     pfL(1:nvar) = recnst(1:nvar,icL)%f(ieL)
+    !     pfR(1:nvar) = recnst(1:nvar,icR)%f(ieR)
+    !
+    !     !-- compute inviscid flux
+    !     call flux_invscid_roe (pfL, pfR, nxf,nyf,  flux)
+    !
+    !     resid(1:nvar,icL) = resid(1:nvar,icL) + flux(1:nvar)*af
+    !   enddo
+    ! enddo
 
     return
   end subroutine compute_residual
