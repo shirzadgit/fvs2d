@@ -119,9 +119,7 @@ contains
         iv=cell(ic)%node(in)
         i = i + node(iv)%ncells
       enddo
-      !ggnb(ic)%nnbcells = i
       allocate( ggnb(ic)%coefnb(i) );
-      !allocate( ggnb(ic)%nbcell(i) );
     enddo
 
 
