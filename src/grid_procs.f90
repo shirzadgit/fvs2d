@@ -114,7 +114,7 @@ module grid_procs
     implicit none
     integer             :: i,j,k,ii,ic,jc,iv,vp
     integer             :: v1,v2,v3,v4, vL,vR, in,im, ie,je
-    integer,allocatable :: locedge(:)
+    integer,allocatable :: locedge(:), idum1(:), idum2(:)
     real                :: xc,yc, x1,x2,x3,x4, y1,y2,y3,y4, dx,dy, xf,yf
     real,allocatable    :: tmpr(:,:)
     logical             :: lfound
@@ -564,6 +564,51 @@ module grid_procs
         if (ic/=jc) cell(ic)%nrmlsign(ie)=-1.d0
       enddo
     enddo
+
+
+    !--------------------------------------------------------------------------!
+    ! determine interior cells
+    !--------------------------------------------------------------------------!
+    if (allocated(idum1)) deallocate(idum1)
+    if (allocated(idum2)) deallocate(idum2)
+    allocate(idum1(ncells), idum2(ncells))
+    idum1(:)=0
+    idum2(:)=0
+    ncells_intr = 0
+    ncells_bndr = 0
+    do ic=1,ncells
+      im=1
+      do ie=1,cell(ic)%nvrt
+        if (cell(ic)%nghbre(ie)==0) im=0
+      enddo
+      if (im==1) then
+        ncells_intr = ncells_intr + 1
+        idum1(ncells_intr) = ic
+      else
+        ncells_bndr = ncells_bndr + 1
+        idum2(ncells_bndr) = ic
+      endif
+    enddo
+    allocate(cell_intr(ncells_intr))
+    allocate(cell_bndr(ncells_bndr))
+    cell_intr(1:ncells_intr) = idum1(1:ncells_intr)
+    cell_bndr(1:ncells_bndr) = idum2(1:ncells_bndr)
+
+    open(100,file='grid_interior.plt')
+    write(100,*) 'variables = "X" "Y"'
+    do i=1,ncells_intr
+      ic=cell_intr(i)
+      write(100,*) cell(ic)%x,cell(ic)%y
+    enddo
+    close(100)
+
+    open(100,file='grid_boundarry.plt')
+    write(100,*) 'variables = "X" "Y"'
+    do i=1,ncells_bndr
+      ic=cell_bndr(i)
+      write(100,*) cell(ic)%x,cell(ic)%y
+    enddo
+    close(100)
 
     return
   end subroutine grid_data

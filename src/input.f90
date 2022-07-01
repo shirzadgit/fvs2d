@@ -8,10 +8,23 @@ module input
   !-- Grid paramteres
   character,save          :: file_grid*127
 
-  integer,save            :: grad_cellcntr_imethd1, grad_cellcntr_imethd2
-  real,save               :: grad_cellcntr_lsq_pow
-  logical,save            :: lgrad_ggcb, lgrad_ggnb, lgrad_ggnb_exp, lgrad_lsq
-  logical,save            :: lgrad_lsq_fn, lgrad_lsq_nn
+  !-- input parameters for gradient
+  integer,save      :: grad_cellcntr_imethd1, grad_cellcntr_imethd2
+  logical,save      :: lgrad_ggcb, lgrad_ggnb, lgrad_ggnb_exp, lgrad_lsq
+  logical,save      :: lgrad_lsq_fn, lgrad_lsq_nn
+  real,save         :: grad_cellcntr_lsq_pow
+
+  !-- gradient limiter scheme
+  integer,save      :: grad_limiter_imethd
+  logical,save      :: lgrad_limiter
+
+  !-- face re-construction scheme
+  integer,save      :: face_reconst_imethd
+  logical,save      :: lface_reconst_linear, lface_reconst_umuscl
+
+  !-- inviscid flux discretization scheme
+  integer,save      :: flux_inviscd_imethd
+  logical,save      :: lflux_inviscd_roe
 
   contains
 
@@ -48,6 +61,9 @@ module input
     read(iunit_input,*)
     read(iunit_input,*)
     read(iunit_input,*) grad_cellcntr_imethd1, grad_cellcntr_imethd2, grad_cellcntr_lsq_pow
+    read(iunit_input,*) grad_limiter_imethd
+    read(iunit_input,*) face_reconst_imethd
+    read(iunit_input,*) flux_inviscd_imethd
     close(iunit_input)
 
 
@@ -91,13 +107,64 @@ module input
         lgrad_lsq_nn=.true.
 
       else
-        write(*,*) 'error'
+        write(*,*) 'check Least-Squares gradient scheme in input file'
+        write(*,*) 'error at mod: input,  sub: input_read'
+        stop
       endif
 
     else
-
+      write(*,*) 'check cell-center gradient scheme in input file'
+      write(*,*) 'error at mod: input,  sub: input_read'
+      stop
     endif
 
+
+    !--------------------------------------------------------------------------!
+    ! Gradient limiter scheme
+    !--------------------------------------------------------------------------!
+    lgrad_limiter=.false.
+    if (grad_limiter_imethd>0) then
+      lgrad_limiter=.true.
+      ! if (grad_limiter_imethd==1) then
+      !
+      ! elseif
+      !
+      !
+      ! else
+      !   write(*,*) 'check gradient limiter scheme in input file'
+      !   write(*,*) 'error at mod: input,  sub: input_read'
+      !   stop
+      ! endif
+    endif
+
+
+    !--------------------------------------------------------------------------!
+    ! Face reconstruction scheme
+    !--------------------------------------------------------------------------!
+    lface_reconst_linear=.false.
+    lface_reconst_umuscl=.false.
+    if (face_reconst_imethd==1) then
+      lface_reconst_linear=.true.
+
+    else
+      write(*,*) 'check face reconstruction scheme in input file'
+      write(*,*) 'error at mod: input,  sub: input_read'
+      stop
+    endif
+
+
+    !--------------------------------------------------------------------------!
+    ! Inviscid flux scheme
+    !--------------------------------------------------------------------------!
+    lflux_inviscd_roe=.false.
+    if (flux_inviscd_imethd==1) then
+      lflux_inviscd_roe=.true.
+
+    else
+      write(*,*) 'check inviscid flux discretization scheme in input file'
+      write(*,*) 'error at mod: input,  sub: input_read'
+      stop
+    endif
 
 
     !-------------------------------------------------------------------------------
@@ -109,27 +176,53 @@ module input
       write(iunit_output,'(a)') '     FVM2D CODE                       '
       write(iunit_output,'(a)') '==========================================================================================================================================='
       write(iunit_output,'(a,a)') 'grid file name: ',trim(file_grid)
+
       write(iunit_output,'(a)') ' '
       write(iunit_output,'(a)') '==========================================================================================================================================='
       write(iunit_output,'(a)') '     Numerics                       '
       write(iunit_output,'(a)') '==========================================================================================================================================='
-      write(iunit_output,'(a)') 'Gradient method'
+
+      !-- Cell-center gradient scheme
+      write(iunit_output,'(a,a)') 'Cell-center gradient method: '
       if (lgrad_ggcb) then
-        write(iunit_output,'(a,a)') 'Scheme: ','Green-Gauss Cell-Base'
+        write(iunit_output,'(a)') '   Green-Gauss Cell-Base'
       elseif (lgrad_ggnb) then
-        write(iunit_output,'(a,a)') 'gradient scheme: ','Green-Gauss Node-Base'
+        write(iunit_output,'(a)') '   Green-Gauss Node-Base'
       elseif (lgrad_lsq) then
-        write(iunit_output,'(a,a)') 'gradient scheme: ','Least-Squeres'
         if (grad_cellcntr_lsq_pow==0.d0) then
-          write(iunit_output,'(a)') 'Unweigghted LSQ'
+          write(iunit_output,'(a)') '   Unweigghted Least-Squeres'
         else
-          write(iunit_output,'(a,f3.1)') 'Weigghted LSQ with 1/d^',grad_cellcntr_lsq_pow
+          write(iunit_output,'(a,f3.1)') '   Weigghted Least-Squeres with 1/d^',grad_cellcntr_lsq_pow
         endif
         if (lgrad_lsq_fn) then
-          write(iunit_output,'(a)') 'LSQ employs face neighbor stencil'
+          write(iunit_output,'(a)') '   LSQ employs face neighbor stencil'
         elseif (lgrad_lsq_nn) then
-          write(iunit_output,'(a)') 'LSQ employs node neighbors stencil'
+          write(iunit_output,'(a)') '   LSQ employs node neighbors stencil'
         endif
+      endif
+
+      !-- Gradient limiter
+      write(iunit_output,'(a)') ' '
+      if (.not.lgrad_limiter) then
+        write(iunit_output,'(a)') 'Gradient limiter is not applied'
+      elseif (lgrad_limiter) then
+
+      endif
+
+      !-- Face reconstruction
+      write(iunit_output,'(a)') ' '
+      write(iunit_output,'(a)') 'Face reconstruction method: '
+      if (lface_reconst_linear) then
+        write(iunit_output,'(a)') '   Linear extrapolation'
+      elseif (lface_reconst_umuscl) then
+        write(iunit_output,'(a)') '   UMUSCL'
+      endif
+
+      !-- Inviscid flux discretization
+      write(iunit_output,'(a)') ' '
+      write(iunit_output,'(a)') 'Inviscid flux discretization scheme: '
+      if (lflux_inviscd_roe) then
+        write(iunit_output,'(a)') '   Roe'
       endif
 
       close(iunit_output)
