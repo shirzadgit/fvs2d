@@ -1,137 +1,97 @@
 module flux_invscid
 
-  ! use mainparam
-  ! use data_grid
-  ! use data_sol
+  use mainparam,  only  : nvar
 
   implicit none
 
   real,parameter,private  :: gamma=1.4d0
 
 
-
 contains
-
-
-  ! !============================================================================!
-  ! !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
-  ! !============================================================================!
-  ! subroutine face_reconstruction
-  !
-  !   implicit none
-  !   integer           :: je, ieL,ieR, icL,icR, k, idum(4), iloc(1)
-  !   real              :: nxf,nyf,af, flux(4), pfL(4),pfR(4)
-  !   real,allocatable  :: grad(:,:,:)
-  !   real,allocatable,dimension(:,:) :: dr,du,dv,dp, wrk
-  !
-  !   !--------------------------------------------------------------------------!
-  !   ! allocation array for face values
-  !   !--------------------------------------------------------------------------!
-  !   allocate( fv(ncells) )
-  !   do ic=1,ncells
-  !     allocate(fv(ic)%r(cell(ic)%nvrt))
-  !     allocate(fv(ic)%u(cell(ic)%nvrt))
-  !     allocate(fv(ic)%v(cell(ic)%nvrt))
-  !     allocate(fv(ic)%p(cell(ic)%nvrt))
-  !   enddo
-  !
-  !
-  !   !--------------------------------------------------------------------------!
-  !   ! compute gradient of primative variables at cell centers
-  !   !--------------------------------------------------------------------------!
-  !   allocate(grad(nvar,ncells,2)) !,  du(ncells,2), dv(ncells,2), dp(ncells,2),)
-  !   ! ivar=1, density
-  !   ! ivar=2, u-velocity
-  !   ! ivar=3, v-velocity
-  !   ! ivar=4, pressure
-  !   do ivar=1,nvar
-  !     call gradient_cellcntr(pvar(ivar,1:ncells), dr(ivar,1:ncells,1:2));
-  !   enddo
-  !   ! call gradient_cellcntr(pvar(1:ncells)%r, dr); !--density gradient
-  !   ! call gradient_cellcntr(pvar(1:ncells)%u, du); !--u-velocity gradient
-  !   ! call gradient_cellcntr(pvar(1:ncells)%v, dv); !--v-velocity gradient
-  !   ! call gradient_cellcntr(pvar(1:ncells)%p, dp); !--pressure gradient
-  !
-  !
-  !   !--------------------------------------------------------------------------!
-  !   ! re-construct face-value of primative variables
-  !   !--------------------------------------------------------------------------!
-  !   if (trim(num_reconstruct_type)=='linear_extrapolation') then
-  !
-  !     !-- linear extrapolation: u(f)=u(i) + <grad(u), r>
-  !     do ic=1,ncells
-  !       do ie=1,cell(ic)%nvrt
-  !         do ivar=1,nvar
-  !           fv(ic,ivar)%r(ie) = pvar(ivar,ic) + cell(ic)%pos2edg(ie,1) * grad(ivar,ic,1) + cell(ic)%pos2edg(ie,2) * grad(ivar,ic,2)
-  !         enddo
-  !       enddo
-  !     enddo
-  !     ! do ic=1,ncells
-  !     !   do ie=1,cell(ic)%nvrt
-  !     !     fv(ic)%r(ie) = pvar(ic)%r + cell(ic)%pos2edg(ie,1) * dr(ic,1) + cell(ic)%pos2edg(ie,2) * dr(ic,2)
-  !     !     fv(ic)%u(ie) = pvar(ic)%u + cell(ic)%pos2edg(ie,1) * du(ic,1) + cell(ic)%pos2edg(ie,2) * du(ic,2)
-  !     !     fv(ic)%v(ie) = pvar(ic)%v + cell(ic)%pos2edg(ie,1) * dv(ic,1) + cell(ic)%pos2edg(ie,2) * dv(ic,2)
-  !     !     fv(ic)%p(ie) = pvar(ic)%p + cell(ic)%pos2edg(ie,1) * dp(ic,1) + cell(ic)%pos2edg(ie,2) * dp(ic,2)
-  !     !   enddo
-  !     ! enddo
-  !
-  !     !-- apply limiter
-  !
-  !
-  !   !
-  !   else
-  !     write(*,*) 'only linear_extrapolation implemented so far'
-  !     stop 'error'
-  !   endif
-  !
-  !   return
-  ! end subroutine face_reconstruction
 
 
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine flux_invscid_roe (pvarL, pvarR, nx,ny,  flux) !, wsn)
+  subroutine flux_invscid_roe (pvarL, pvarR, nx,ny,  flux)
     implicit none
 
-    real,intent(in)   :: pvarL(4), pvarR(4), nx,ny
-    real,intent(out)  :: flux(4)
+    real,intent(in)   :: pvarL(nvar), pvarR(nvar), nx,ny
+    real,intent(out)  :: flux(nvar)
 
+    integer           :: i,j
     real              :: tx,ty
-    real              :: rhoL,uL,vL,pL, aL,HL, unL,utL
-    real              :: rhoR,uR,vR,pR, aR,HR, unR,utR
-    real              :: fL(4),fR(4)
+    real              :: rhoL,uL,vL,pL, aL,HL, unL,utL, kL
+    real              :: rhoR,uR,vR,pR, aR,HR, unR,utR, kR
+    real              :: RT,rho,u,v,H,a,un,ut
+    real              :: drho,dp,dun,dut,tke
+    real              :: Ldu(nvar), ws(nvar), dws(nvar), Rv(nvar,nvar), diss(nvar)
+    real              :: fL(nvar),fR(nvar)
 
-    flux(4) = 0.d0
+    flux(1:nvar) = 0.d0
 
     !-- tangent vector
     tx = -ny
     ty =  nx
 
-    !Primitive and other variables.
-    !--  Left state
-    rhoL = pvarL(1)
-      uL = pvarL(2)
-      vL = pvarL(3)
-      pL = pvarL(4)
+    !--  Left state                   !--  Right state
+    rhoL = pvarL(1);                  rhoR = pvarR(1)
+      uL = pvarL(2);                    uR = pvarR(2)
+      vL = pvarL(3);                    vR = pvarR(3)
+      pL = pvarL(4);                    pR = pvarR(4)
+     unL = uL*nx+vL*ny;                unR = uR*nx+vR*ny
+     utL = uL*tx+vL*ty;                utR = uR*tx+vR*ty
+      aL = sqrt(gamma*pL/rhoL);         aR = sqrt(gamma*pR/rhoR)
+      kL = 0.5d0*(uL*uL+vL*vL);         kR = 0.5d0*(uR*uR+vR*vR)
+      HL = aL*aL/(gamma-1.d0) + kL;     HR = aR*aR/(gamma-1.d0) + kR
 
+    !-- compute Roe averages
+      RT = sqrt(rhoR/rhoL)
+     rho = RT*rhoL
+       u = (uL+RT*uR)/(1.d0+RT)
+       v = (vL+RT*vR)/(1.d0+RT)
+       H = (HL+RT*HR)/(1.d0+RT)
+       a = sqrt( (gamma-1.d0)*(H-0.5d0*(u*u+v*v)) )
+      un = u*nx+v*ny
+      ut = u*tx+v*ty
 
-    unL = uL*nx+vL*ny
-    utL = uL*tx+vL*ty
-     aL = sqrt(gamma*pL/rhoL)
-     HL = aL*aL/(gamma-1.d0) + 0.5d0*(uL*uL+vL*vL)
+    !-- Wave strengths
+    drho = rhoR - rhoL
+      dp =   pR - pL
+     dun =  unR - unL
+     dut =  utR - utL
 
-    !--  Right state
-    rhoR = pvarR(1)
-      uR = pvarR(2)
-      vR = pvarR(3)
-      pR = pvarR(4)
+    LdU(1) = (dp - rho*a*dun )/(2.d0*a*a)
+    LdU(2) = rho*dut
+    LdU(3) = drho - dp/(a*a)
+    LdU(4) = (dp + rho*a*dun )/(2.d0*a*a)
 
-    unR = uR*nx+vR*ny
-    utR = uR*tx+vR*ty
-     aR = sqrt(gamma*pR/rhoR)
-     HR = aR*aR/(gamma-1.d0) + 0.5d0*(uR*uR+vR*vR)
+    !-- Wave Speed
+    ws(1) = abs(un-a)
+    ws(2) = abs(un)
+    ws(3) = abs(un)
+    ws(4) = abs(un+a)
 
+    !--Harten's Entropy Fix JCP(1983), 49, pp357-393: only for the nonlinear fields.
+    dws(1) = 1.d0/5.d0
+    if ( ws(1) < dws(1) ) ws(1) = 0.5d0 * ( ws(1)*ws(1)/dws(1)+dws(1) )
+    dws(4) = 1.d0/5.d0
+    if ( ws(4) < dws(4) ) ws(4) = 0.5d0 * ( ws(4)*ws(4)/dws(4)+dws(4) )
+
+    !-- Right Eigenvectors
+    tke=0.5d0*(u*u+v*v)
+    Rv(1,1) = 1.d0;       Rv(1,2) = 0.d0;   Rv(1,3) = 1.d0;   Rv(1,4) = 1.d0
+    Rv(2,1) = u - a*nx;   Rv(2,2) = tx;     Rv(2,3) = u;      Rv(2,4) = u + a*nx
+    Rv(3,1) = v - a*ny;   Rv(3,2) = ty;     Rv(3,3) = v;      Rv(3,4) = v + a*ny
+    Rv(4,1) = H - un*a;   Rv(4,2) = ut;     Rv(4,3) = tke;    Rv(4,4) = H + un*a
+
+    !-- Dissipation Term
+    diss(1:4) = 0.d0
+    do i=1,4
+      do j=1,4
+        diss(i) = diss(i) + ws(j)*LdU(j)*Rv(i,j)
+      end do
+    end do
 
     !-- Compute the flux.
     fL(1) = rhoL*unL
@@ -144,10 +104,8 @@ contains
     fR(3) = rhoR*unR * vR + pR*ny
     fR(4) = rhoR*unR * HR
 
-    !--
-    flux = 0.5d0 * (fL + fR)
-
-    if (maxval(abs(flux))==0.d0) write(*,*) 'r u kidding me'
+    !-- Roe's flux
+    flux = 0.5d0 * (fL + fR - diss)
 
     return
   end subroutine flux_invscid_roe
