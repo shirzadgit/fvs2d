@@ -7,6 +7,7 @@ program fvs2d
   use grid_procs
   use interpolation
   use gradient
+  use residual
   use mms_euler2d
   use test
 
@@ -80,6 +81,12 @@ program fvs2d
   ! initialize runge-kutta: setup coefficents
   !----------------------------------------------------------------------------!
   !call runge_kutta_init
+
+
+  !----------------------------------------------------------------------------!
+  ! initialize residual
+  !----------------------------------------------------------------------------!
+  call residual_init
 
 
   !----------------------------------------------------------------------------!
