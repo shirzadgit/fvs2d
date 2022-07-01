@@ -1,8 +1,6 @@
 module gradient_ggcb
 
   use data_grid
-  !use grid_procs
-  !use interpolation
 
   implicit none
 
@@ -14,12 +12,7 @@ module gradient_ggcb
     real,dimension(:,:),pointer   :: coefnb
   end type ggcb_type
 
-
   type(ggcb_type),dimension(:),pointer  :: ggcb
-
-
-  ! integer,allocatable,save  :: grad_ggcb_ptr(:,:)
-  ! real,allocatable,save     :: grad_ggcb_coef0(:,:), grad_ggcb_coefnb(:,:,:)
 
   private :: setup
   public  :: grad_ggcb_init, grad_ggcb
@@ -35,7 +28,6 @@ contains
     !--------------------------------------------------------------------------!
     ! allocate
     !--------------------------------------------------------------------------!
-    !allocate( grad_ggcb_ptr(ncells,num_vert_max), grad_ggcb_coef0(num_cells,2), grad_ggcb_coefnb(num_cells,num_vert_max,2))
     allocate(ggcb(ncells))
 
 
@@ -57,9 +49,6 @@ contains
     integer     :: i,j, ic,ic1,ic2, ie,ie1,ie2, je, in,iv,iv1,iv2
     real        :: af,nxf,nyf, xf,yf, xc,yc, xc1,yc1, dx,dy, d0,d1
 
-
-    !grad_ggcb_coef0(:,:)=0.d0
-    !grad_ggcb_coefnb(:,:,:)=0.d0
 
     do ic=1,ncells
       xc=cell(ic)%x
@@ -92,28 +81,20 @@ contains
 
         xc1=xc
         yc1=yc
-        !grad_ggcb_ptr(ic,ie)=ic
         ggcb(ic)%ptr(ie)=ic
         if (ic1>0 .and. ic1/=ic) then
           xc1=cell(ic1)%x
           yc1=cell(ic1)%y
-          !grad_ggcb_ptr(ic,ie)=ic1
           ggcb(ic)%ptr(ie)=ic1
         elseif (ic2>0 .and. ic2/=ic) then
           xc1=cell(ic2)%x
           yc1=cell(ic2)%y
-          !grad_ggcb_ptr(ic,ie)=ic2
           ggcb(ic)%ptr(ie)=ic2
         endif
 
         dx=xf-xc1
         dy=yf-yc1
         d1=dsqrt(dx**2+dy**2)
-
-        ! grad_ggcb_coef0(ic,1)  = grad_ggcb_coef0(ic,1) + d1/(d0+d1)*nxf*af
-        ! grad_ggcb_coef0(ic,2)  = grad_ggcb_coef0(ic,2) + d1/(d0+d1)*nyf*af
-        ! grad_ggcb_coefnb(ic,ie,1) = d0/(d0+d1)*nxf*af
-        ! grad_ggcb_coefnb(ic,ie,2) = d0/(d0+d1)*nyf*af
 
         ggcb(ic)%coef0(1) = ggcb(ic)%coef0(1) + d1/(d0+d1)*nxf*af
         ggcb(ic)%coef0(2) = ggcb(ic)%coef0(2) + d1/(d0+d1)*nyf*af
@@ -139,18 +120,6 @@ contains
     real,allocatable  :: fv(:)
 
     dfc(:,:)=0.d0
-
-    ! do ic=1,ncells
-    !   dfc(ic,1)= grad_ggcb_coef0(ic,1) * fc(ic)
-    !   dfc(ic,2)= grad_ggcb_coef0(ic,2) * fc(ic)
-    !   do ie=1,cell(ic)%nvrt
-    !     ic1=grad_ggcb_ptr(ic,ie)
-    !     dfc(ic,1) = dfc(ic,1) + grad_ggcb_coefnb(ic,ie,1)*fc(ic1)
-    !     dfc(ic,2) = dfc(ic,2) + grad_ggcb_coefnb(ic,ie,2)*fc(ic1)
-    !   end do
-    !   dfc(ic,1) = dfc(ic,1)/cell_area(ic)
-    !   dfc(ic,2) = dfc(ic,2)/cell_area(ic)
-    ! end do
 
     do ic=1,ncells
       dfc(ic,1)= ggcb(ic)%coef0(1) * fc(ic)

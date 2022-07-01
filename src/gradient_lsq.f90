@@ -78,7 +78,7 @@ contains
     do ic=1,ncells
       allocate(lsq(ic)%cell(cell(ic)%nvrt))
 
-      lsq(ic)%ncells=3
+      lsq(ic)%ncells=cell(ic)%nvrt
 
       lsq(ic)%cell(:)=0
       r(1)=cell(ic)%x
@@ -113,6 +113,9 @@ contains
             if (nt==izb) exit outer
           endif
         enddo outer
+      elseif (izb>2) then
+        write(*,*) 'error in gradient_lsq, sub: setup_fn: #s of edges on the boundary>2!'
+        stop 'mod: gradient_lsq, sub: setup_fn'
       endif
 
     enddo
@@ -191,7 +194,6 @@ contains
       !if (cell_neighbr_num(ic)==1) grad_lsq_coef(ic,:,:)=0.d0
     enddo
 
-
     return
   end subroutine setup_fn
 
@@ -207,7 +209,6 @@ contains
     integer             :: i,j,k, ic,jc,in, iv
     integer             :: min_tmp, max_tmp, nt
     integer,allocatable :: tmp(:), tmp_unq(:)
-
 
     !--------------------------------------------------------------------------!
     ! find additional cells for boundary cells
@@ -336,6 +337,22 @@ contains
 
     enddo
 
+
+
+    open(100,file='grid_lsqnn.plt')
+    do ic=1000,1100 !,ncells
+      write(100,'(a)') 'VARIABLES ="X", "Y"'
+      write(100,'(a)') 'zone i=1, j=1, f=point'
+      write(100,*) cell(ic)%x,cell(ic)%y
+      write(100,'(a)') 'VARIABLES ="X", "Y"'
+      write(100,'(a,i0,a)') 'zone i=',lsq(ic)%ncells, ', j=1, f=point'
+      do in=1,lsq(ic)%ncells
+        jc=lsq(ic)%cell(in)
+        write(100,*) cell(jc)%x,cell(jc)%y
+      enddo
+    end do
+    close(100)
+
     return
   end subroutine setup_nn
 
@@ -351,7 +368,7 @@ contains
     integer           :: ic,jc,in
 
     do ic=1,ncells
-      do in=1,cell(ic)%nvrt
+      do in=1,lsq(ic)%ncells !cell(ic)%nvrt
         jc=lsq(ic)%cell(in)
         dfc(ic,1) = dfc(ic,1) + lsq(ic)%coef(1,in)*(fc(jc)-fc(ic))*lsq(ic)%w(in)
         dfc(ic,2) = dfc(ic,2) + lsq(ic)%coef(2,in)*(fc(jc)-fc(ic))*lsq(ic)%w(in)
@@ -370,13 +387,13 @@ contains
 
     real,intent(in)   :: fc(ncells)
     real,intent(out)  :: dfc(ncells,2)
-    integer           :: ic,jc,i
+    integer           :: ic,jc,in
 
     do ic=1,ncells
-      do i=1,lsq(ic)%ncells
-        jc=lsq(ic)%cell(i)
-        dfc(ic,1) = dfc(ic,1) + lsq(ic)%coef(1,i)*(fc(jc)-fc(ic))*lsq(ic)%w(i)
-        dfc(ic,2) = dfc(ic,2) + lsq(ic)%coef(2,i)*(fc(jc)-fc(ic))*lsq(ic)%w(i)
+      do in=1,lsq(ic)%ncells
+        jc=lsq(ic)%cell(in)
+        dfc(ic,1) = dfc(ic,1) + lsq(ic)%coef(1,in)*(fc(jc)-fc(ic))*lsq(ic)%w(in)
+        dfc(ic,2) = dfc(ic,2) + lsq(ic)%coef(2,in)*(fc(jc)-fc(ic))*lsq(ic)%w(in)
       enddo
     end do
 
