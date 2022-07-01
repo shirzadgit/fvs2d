@@ -8,6 +8,8 @@ module data_grid
   integer,save                    :: nnodes
   integer,save                    :: ncells_tri, ncells_quad, ncells
   integer,save                    :: nedges
+  integer,save                    :: ncells_intr, ncells_bndr
+  integer,allocatable,save        :: cell_intr(:), cell_bndr(:)
 
 
   !----------------------------------------------------------------------------!
