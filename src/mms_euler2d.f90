@@ -7,19 +7,7 @@ module mms_euler2d
 
   private
 
-  ! type mms_source_type
-  !   real          :: r,u,v,e
-  ! end type mms_source_type
-  !
-  ! type mms_sol_type
-  !   real          :: r,u,v,p
-  ! end type mms_sol_type
-  !
-  ! type(mms_source_type),dimension(:),pointer    :: mms_source
-  ! type(mms_sol_type),dimension(:),pointer       :: mms_sol
-
   real,allocatable,dimension(:,:) :: mms_sol, mms_source
-
 
   real,parameter  :: gamma=1.4d0
   real,save       :: cr0,crs,crx,cry
@@ -73,7 +61,7 @@ contains
     cpy =  2.98*pi
 
     !--------------------------------------------------------------------------!
-    ! compute source terms
+    ! compute manufactured solution and source terms
     !--------------------------------------------------------------------------!
     do ic=1,ncells
       xc=cell(ic)%x
@@ -102,13 +90,13 @@ contains
       rHx= gamma/(gamma-1.d0)*px + rx*(u*u + v*v)/2.d0 + r*(u*ux + v*vx)
       rHy= gamma/(gamma-1.d0)*py + ry*(u*u + v*v)/2.d0 + r*(u*uy + v*vy)
 
-      !-- continuity: source%r = d(ru)/dx + d(rv)/dy
-      mms_source(1,ic) =  rx*u + u*rx + ry*v + r*vy
+      !-- continuity: source%r = d(rho*u)/dx + d(rho*v)/dy
+      mms_source(1,ic) = rx*u + u*rx + ry*v + r*vy
 
-      !-- x-momentum: source%u = d(ruu)/dx + d(ruv)/dy + dp/dx
+      !-- x-momentum: source%u = d(rho*u*u)/dx + d(rho*u*v)/dy + dp/dx
       mms_source(2,ic) = rx*u*u + 2.d0*r*u*ux + ry*u*v + r*uy*v + r*u*vy + px
 
-      !-- y-momentum: source%v = d(ruv)/dx + d(rvv)/dy + dp/dy
+      !-- y-momentum: source%v = d(rho*u*v)/dx + d(rho*v*v)/dy + dp/dy
       mms_source(3,ic) = rx*u*v + r*ux*v + r*u*vx + ry*v*v + 2.d0*r*v*vy + py
 
       !--     energy: source%e =  d(rho*u*H)/dx + (rho*v*H)/dy
