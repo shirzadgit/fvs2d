@@ -3,12 +3,16 @@ program fvs2d
   use mainparam
   use input
   use data_grid
-  use data_sol
+  use data_solution
   use grid_procs
   use interpolation
   use gradient
+  use runge_kutta
   use residual
-  use mms_euler2d
+  use mms
+  use initialize
+  use tecplot
+  use io
   use test
 
   use mpi
@@ -19,7 +23,11 @@ program fvs2d
 
   integer           :: ierr,errcode
   integer           :: stat(MPI_STATUS_SIZE)
-  real              :: t1
+
+  integer           :: istep,istep_save,istep_av,it
+  real              :: t1,t2
+  real              :: cput1,cput2,cputot
+  real,parameter    :: min=60.d0, hr=3600.d0
 
 
   !----------------------------------------------------------------------------!
@@ -62,7 +70,7 @@ program fvs2d
   !----------------------------------------------------------------------------!
   ! solution variable allocatation
   !----------------------------------------------------------------------------!
-  call data_sol_allocate
+  call data_solution_init
 
 
   !----------------------------------------------------------------------------!
@@ -80,41 +88,76 @@ program fvs2d
   !----------------------------------------------------------------------------!
   ! initialize runge-kutta: setup coefficents
   !----------------------------------------------------------------------------!
-  !call runge_kutta_init
+  call runge_kutta_init
 
 
   !----------------------------------------------------------------------------!
   ! initialize residual
   !----------------------------------------------------------------------------!
-  call residual_init
+  !call residual_init
 
 
   !----------------------------------------------------------------------------!
-  ! compute source term for euler equation
+  ! compute manufactured solutio and source terms
   !----------------------------------------------------------------------------!
-  call mms_euler2d_init
+  call mms_init
 
 
   !----------------------------------------------------------------------------!
   ! initialize flow
   !----------------------------------------------------------------------------!
-  !t1 = dble(ntstart-1)*dt
-  t1=0.d0
-  call initialize(t1)
+  call initialize_solution
 
 
   !----------------------------------------------------------------------------!
   ! open ios files
   !----------------------------------------------------------------------------!
   !call io_init
+  call tecplot_init
 
 
   !----------------------------------------------------------------------------!
   ! test operators
   !----------------------------------------------------------------------------!
   call test_init
+  stop 'ok'
+
+  !----------------------------------------------------------------------------!
+  ! start time integration
+  !----------------------------------------------------------------------------!
+  cput1 = MPI_WTIME()
+  istep = 0
+  istep_save=0
+  istep_av=0
+  do it=ntstart,ntstart+ntimes-1
+    istep = istep + 1
+
+    !--begin/end times
+    t1 = dble(it-1)*dt
+    t2 = dble(it)*dt
+
+    !-- integrate from t1 to t2
+    call time_integration (t1)
+
+    !-- output the solution at check point for user
+    !write(*,'(a,i6,a,i4,a,e16.8)') 'time-step=',istep,' , proc=',proc_id,' , rzw=',rz((1+m1)/2,1);
+    write(*,*) 'time-step', it, 'done'
+
+    !-- write out output files
+    !call io_write_inst(istep)
+    call io_write_inst
+
+    !-- write out entire domain for all nvar in double precision
+    if (mod(istep,itsave)==0) then
+      istep_save=istep_save+1
+      !call io_write_save(istep_save)
+    endif
+  enddo
 
 
+  !----------------------------------------------------------------------------!
+  ! end
+  !----------------------------------------------------------------------------!
   call MPI_FINALIZE(ierr)
   stop 'o.k.'
 
