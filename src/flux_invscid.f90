@@ -1,23 +1,39 @@
 module flux_invscid
 
   use mainparam,  only  : nvar
+  use input,      only  : lflux_inviscd_roe, gamma
 
   implicit none
 
-  real,parameter,private  :: gamma=1.4d0
+  private :: flux_invscid_roe
 
 
 contains
 
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine compute_flux_invscid (pvarL,pvarR, nx,ny,  flux, ws_max)
+
+    implicit none
+    real,intent(in)   :: pvarL(nvar), pvarR(nvar), nx,ny
+    real,intent(out)  :: flux(nvar), ws_max
+
+    if (lflux_inviscd_roe) then
+      call flux_invscid_roe (pvarL,pvarR, nx,ny,  flux, ws_max)
+    endif
+
+    return
+  end subroutine compute_flux_invscid
 
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine flux_invscid_roe (pvarL,pvarR, nx,ny,  flux)
-    implicit none
+  subroutine flux_invscid_roe (pvarL,pvarR, nx,ny,  flux, ws_max)
 
+    implicit none
     real,intent(in)   :: pvarL(nvar), pvarR(nvar), nx,ny
-    real,intent(out)  :: flux(nvar)
+    real,intent(out)  :: flux(nvar), ws_max
 
     integer           :: i,j
     real              :: tx,ty
@@ -29,6 +45,7 @@ contains
     real              :: fL(nvar),fR(nvar)
 
     flux(1:nvar) = 0.d0
+    ws_max = 0.d0
 
     !-- tangent vector
     tx = -ny
@@ -105,9 +122,10 @@ contains
     fR(4) = rhoR*unR * HR
 
     !-- Roe's flux
-    flux = 0.5d0 * (fL + fR - diss)
+    flux = 0.5d0 * (fL + fR - 1.d0*diss)
 
-    !flux = fL;
+    !-- Normal max wave speed/2
+    ws_max = 0.5d0*(abs(un) + a)
 
     return
   end subroutine flux_invscid_roe
