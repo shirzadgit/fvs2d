@@ -10,6 +10,11 @@ module data_grid
   integer,save                    :: nedges
   integer,save                    :: ncells_intr, ncells_bndr
   integer,allocatable,save        :: cell_intr(:), cell_bndr(:)
+  integer,save                    :: nedges_intr, nedges_bndr
+  integer,allocatable,save        :: edge_intr(:), edge_bndr(:), bedge_cell(:)
+
+  real,save                       :: heff1, heff2
+  integer,save                    :: nbndries
 
 
   !----------------------------------------------------------------------------!
@@ -45,11 +50,22 @@ module data_grid
 
 
   !----------------------------------------------------------------------------!
+  ! data type for boundaries
+  !----------------------------------------------------------------------------!
+  type bc_type
+    integer                       :: ncells, nedges
+    integer,dimension(:),pointer  :: cell, edge
+    character(len=80)             :: type
+  end type bc_type
+
+
+  !----------------------------------------------------------------------------!
   ! allocatable data
   !----------------------------------------------------------------------------!
   type(node_type),dimension(:),pointer  :: node
   type(edge_type),dimension(:),pointer  :: edge
   type(cell_type),dimension(:),pointer  :: cell
+  type(bc_type)  ,dimension(:),pointer  :: bndry
 
 
 contains
@@ -64,6 +80,7 @@ contains
     deallocate(cell)
     deallocate(edge)
     deallocate(node)
+    deallocate(bndry)
 
     return
   end subroutine data_grid_close
