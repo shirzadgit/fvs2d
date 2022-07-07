@@ -1,7 +1,7 @@
 module grid_procs
 
-  use mainparam, only : iunit_grid
-  use input, only     : file_grid
+  use mainparam
+  use input,      only  : file_grid, file_bc
   use data_grid
   use kdtree2_module
 
@@ -38,9 +38,21 @@ module grid_procs
 
 
     !--------------------------------------------------------------------------!
+    ! read grid file
+    !--------------------------------------------------------------------------!
+    call grid_bc_read
+
+
+    !--------------------------------------------------------------------------!
     ! construct grid links and data
     !--------------------------------------------------------------------------!
     call grid_data
+
+
+    !--------------------------------------------------------------------------!
+    ! construct grid links and data
+    !--------------------------------------------------------------------------!
+    call grid_data_verify
 
 
     return
@@ -56,7 +68,6 @@ module grid_procs
     integer   :: i,ii,istat
     logical   :: linputfile
 
-
     !--------------------------------------------------------------------------!
     ! check grid file
     !--------------------------------------------------------------------------!
@@ -64,7 +75,7 @@ module grid_procs
     if (.not.linputfile) then
       write(*,*)
       write(*,*) 'linputfile:',linputfile
-      write(*,*) 'cannot find "'//trim(file_grid)//'" file!'
+      write(*,'(a,a,a)') 'cannot find ',trim(file_grid),' file!'
       write(*,*) 'error in --> mod:grid_procs, sub:grid_read'
       stop 'program stopped at "grid_read"'
     endif
@@ -109,13 +120,61 @@ module grid_procs
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
+  subroutine grid_bc_read
+
+    implicit none
+    integer   :: i,ib,istat
+    logical   :: linputfile
+
+
+    !--------------------------------------------------------------------------!
+    ! check grid file
+    !--------------------------------------------------------------------------!
+    inquire(file=trim(file_bc),exist=linputfile);
+    if (.not.linputfile) then
+      write(*,*)
+      write(*,*) 'linputfile:',linputfile
+      write(*,'(a,a,a)') 'cannot find ',trim(file_bc),' file!'
+      write(*,*) 'error in --> mod:grid_procs, sub:grid_bc_read'
+      stop 'program stopped at "grid_bc_read"'
+    endif
+
+
+    !-- open bc file and skip the first line
+    open (iunit_bc,file=trim(file_bc),status='unknown',IOSTAT=istat)
+
+    read (iunit_bc,*) nbndries
+
+    allocate(bndry(nbndries))
+
+    do ib=1,nbndries
+      read (iunit_bc,*) bndry(ib)%ncells, bndry(ib)%type
+    enddo
+
+    do ib=1,nbndries
+      allocate( bndry(ib)%cell(bndry(ib)%ncells) )
+      do i=1,bndry(ib)%ncells
+        read (iunit_bc,*) bndry(ib)%cell(i)
+      enddo
+    enddo
+
+    close(iunit_bc)
+
+    return
+  end subroutine grid_bc_read
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
   subroutine grid_data
 
     implicit none
-    integer             :: i,j,k,ii,ic,jc,iv,vp
+    integer             :: i,j,k,ii,ic,jc,iv,vp, ib
     integer             :: v1,v2,v3,v4, vL,vR, in,im, ie,je
-    integer,allocatable :: locedge(:), idum1(:), idum2(:)
-    real                :: xc,yc, x1,x2,x3,x4, y1,y2,y3,y4, dx,dy, xf,yf
+    integer             :: idum4(4), tri_v2e(3), qud_v2e(4)
+    integer,allocatable :: locedge(:), idum1(:), idum2(:), idum3(:)
+    real                :: xc,yc, x1,x2,x3,x4, y1,y2,y3,y4, dx,dy, xf,yf, at
     real,allocatable    :: tmpr(:,:)
     logical             :: lfound
 
@@ -169,6 +228,22 @@ module grid_procs
 
 
     !--------------------------------------------------------------------------!
+    ! compute effective distance, error
+    !--------------------------------------------------------------------------!
+    at = 0.d0
+    do ic=1,ncells
+      at = at + cell(ic)%vol
+    enddo
+    heff1 = sqrt(at/dble(ncells))
+
+    at = 0.d0
+    do ic=1,ncells
+      at = at + sqrt(cell(ic)%vol)
+    enddo
+    heff2 = at/dble(ncells)
+
+
+    !--------------------------------------------------------------------------!
     ! build k-d tree based on cell vertices
     !--------------------------------------------------------------------------!
     allocate(tmpr(2,nnodes))
@@ -193,7 +268,7 @@ module grid_procs
 
 
     !--------------------------------------------------------------------------!
-    ! distribute cell index to nodes
+    ! count number pf cells around a node/vertice and allocate node2cell
     !--------------------------------------------------------------------------!
     node(1:nnodes)%ncells = 0
     do ic=1,ncells
@@ -202,9 +277,15 @@ module grid_procs
         node(vp)%ncells = node(vp)%ncells + 1
       enddo
     enddo
+
     do i=1,nnodes
       allocate(node(i)%cell(node(i)%ncells));
     enddo
+
+
+    !--------------------------------------------------------------------------!
+    ! build node to cell link
+    !--------------------------------------------------------------------------!
     node(1:nnodes)%ncells = 0
     do ic=1,ncells
       do iv=1,cell(ic)%nvrt
@@ -216,7 +297,30 @@ module grid_procs
 
 
     !--------------------------------------------------------------------------!
-    ! distribute cell index to nodes
+    ! Find edge-neighbor of each cell
+    !            o                               o
+    !           . \                            .   \
+    !          .   \                          .      \
+    !         .  2  \                        .    7   \
+    !     v1 .       \ v3                v3 .           \ v2
+    !       o---------o                   o--------------o---o
+    !     .  \       / \                 / \            /     \
+    !    .    \  ic /   \               /   \    ic    /       \
+    !   .  5   \   /  8  \             /  9  \        /    12   \
+    !  .        \ /       \           /       \      /           \
+    ! o----------o---------o         o---------o====o-------------o
+    !            v2                           v4    v1
+    !..........................................................................
+    ! cell(ic)%nghbr = 3              cell(ic)%nghbr = 4
+    ! cell(ic)%nghbr(v1) = 8          cell(ic)%nghbr(v1) = 9
+    ! cell(ic)%nghbr(v2) = 2          cell(ic)%nghbr(v2) = 0 (boundary)
+    ! cell(ic)%nghbr(v3) = 5          cell(ic)%nghbr(v3) = 12
+    !                                 cell(ic)%nghbr(v4) = 7
+    !..........................................................................
+    ! cell(ic)%nghbre(e1) = 5         cell(ic)%nghbre(e1) = 12
+    ! cell(ic)%nghbre(e2) = 8         cell(ic)%nghbre(e2) = 7
+    ! cell(ic)%nghbre(e3) = 2         cell(ic)%nghbre(e3) = 9
+    !                                 cell(ic)%nghbre(e4) = 0 (boundary)
     !--------------------------------------------------------------------------!
     do ic=1,ncells
       cell(ic)%nnghbrs=cell(ic)%nvrt
@@ -297,7 +401,7 @@ module grid_procs
     nedges=0
     do ic = 1, ncells
       do j=1,cell(ic)%nnghbrs
-        if ( cell(ic)%nghbr(j) > ic .or. cell(ic)%nghbr(j)==0 ) nedges = nedges + 1
+        if (cell(ic)%nghbr(j)>ic .or. cell(ic)%nghbr(j)==0) nedges = nedges + 1
       enddo
     enddo
     allocate(edge(nedges))
@@ -385,22 +489,27 @@ module grid_procs
     !--------------------------------------------------------------------------!
     ! assign cell index to edge
     !--------------------------------------------------------------------------!
+    tri_v2e(1)=2;  tri_v2e(2)=3;  tri_v2e(3)=1;
+    qud_v2e(1)=3;  qud_v2e(2)=4;  qud_v2e(3)=1;  qud_v2e(4)=2
+
     do ic=1,ncells
       allocate(cell(ic)%edge(cell(ic)%nvrt))
     enddo
 
     nedges=0
     !--triangle cells
-    allocate(locedge(3));  locedge(1)=2;  locedge(2)=3;  locedge(3)=1;
     do ic = 1, ncells_tri
       if ( cell(ic)%nghbr(3) > ic  .or. cell(ic)%nghbr(3)==0 ) then
         nedges = nedges + 1
         cell(ic)%edge(1)= nedges
       else
         jc=cell(ic)%nghbr(3)
-        tlp1: do k=1,3
+        idum4 = 0
+        if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+        if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+        tlp1: do k=1,cell(jc)%nvrt !3
           if (cell(jc)%nghbr(k)==ic) then
-            ie=locedge(k)
+            ie=idum4(k) !locedge(k)
             cell(ic)%edge(1)=cell(jc)%edge(ie)
             exit tlp1
           endif
@@ -412,9 +521,12 @@ module grid_procs
        cell(ic)%edge(2)= nedges
      else
        jc=cell(ic)%nghbr(1)
-       tlp2: do k=1,3
+       idum4 = 0
+       if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+       if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+       tlp2: do k=1,cell(jc)%nvrt !3
          if (cell(jc)%nghbr(k)==ic) then
-           ie=locedge(k)
+           ie=idum4(k) !locedge(k)
            cell(ic)%edge(2)=cell(jc)%edge(ie)
            exit tlp2
          endif
@@ -426,9 +538,12 @@ module grid_procs
        cell(ic)%edge(3)= nedges
      else
        jc=cell(ic)%nghbr(2)
-       tlp3: do k=1,3
+       idum4 = 0
+       if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+       if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+       tlp3: do k=1,cell(jc)%nvrt !3
          if (cell(jc)%nghbr(k)==ic) then
-           ie=locedge(k)
+           ie=idum4(k) !locedge(k)
            cell(ic)%edge(3)=cell(jc)%edge(ie)
            exit tlp3
          endif
@@ -437,8 +552,6 @@ module grid_procs
     enddo
 
     !--quad cells
-    deallocate(locedge)
-    allocate(locedge(4));  locedge(1)=3;  locedge(2)=4;  locedge(3)=1;  locedge(4)=2
     do i = 1, ncells_quad
       ic=ncells_tri + i
       if ( cell(ic)%nghbr(3) > ic  .or. cell(ic)%nghbr(3)==0 ) then
@@ -446,9 +559,12 @@ module grid_procs
         cell(ic)%edge(1)= nedges
       else
         jc=cell(ic)%nghbr(3)
-        qlp1: do k=1,4
+        idum4 = 0
+        if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+        if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+        qlp1: do k=1,cell(jc)%nvrt !4
           if (cell(jc)%nghbr(k)==ic) then
-            ie=locedge(k)
+            ie=idum4(k) !locedge(k)
             cell(ic)%edge(1)=cell(jc)%edge(ie)
             exit qlp1
           endif
@@ -460,9 +576,12 @@ module grid_procs
         cell(ic)%edge(2)= nedges
       else
         jc=cell(ic)%nghbr(4)
-        qlp2: do k=1,4
+        idum4 = 0
+        if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+        if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+        qlp2: do k=1,cell(jc)%nvrt !4
           if (cell(jc)%nghbr(k)==ic) then
-            ie=locedge(k)
+            ie=idum4(k) !locedge(k)
             cell(ic)%edge(2)=cell(jc)%edge(ie)
             exit qlp2
           endif
@@ -474,9 +593,12 @@ module grid_procs
         cell(ic)%edge(3)= nedges
       else
         jc=cell(ic)%nghbr(1)
-        qlp3: do k=1,4
+        idum4 = 0
+        if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+        if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+        qlp3: do k=1,cell(jc)%nvrt !4
           if (cell(jc)%nghbr(k)==ic) then
-            ie=locedge(k)
+            ie=idum4(k) !locedge(k)
             cell(ic)%edge(3)=cell(jc)%edge(ie)
             exit qlp3
           endif
@@ -488,9 +610,12 @@ module grid_procs
         cell(ic)%edge(4)= nedges
       else
         jc=cell(ic)%nghbr(2)
-        qlp4: do k=1,4
+        idum4 = 0
+        if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+        if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+        qlp4: do k=1,cell(jc)%nvrt !4
           if (cell(jc)%nghbr(k)==ic) then
-            ie=locedge(k)
+            ie=idum4(k) !locedge(k)
             cell(ic)%edge(4)=cell(jc)%edge(ie)
             exit qlp4
           endif
@@ -567,7 +692,7 @@ module grid_procs
 
 
     !--------------------------------------------------------------------------!
-    ! determine interior cells
+    ! determine interior cells and check #s boundary cells
     !--------------------------------------------------------------------------!
     if (allocated(idum1)) deallocate(idum1)
     if (allocated(idum2)) deallocate(idum2)
@@ -594,21 +719,72 @@ module grid_procs
     cell_intr(1:ncells_intr) = idum1(1:ncells_intr)
     cell_bndr(1:ncells_bndr) = idum2(1:ncells_bndr)
 
-    open(100,file='grid_interior.plt')
-    write(100,*) 'variables = "X" "Y"'
-    do i=1,ncells_intr
-      ic=cell_intr(i)
-      write(100,*) cell(ic)%x,cell(ic)%y
-    enddo
-    close(100)
+    if (ncells_bndr /= sum(bndry(1:nbndries)%ncells)) then
+      write(*,*) '#s of boundary cells does not match'
+      write(*,*) 'error in mod: grid_procs, sub: grid_data'
+      stop
+    endif
 
-    open(100,file='grid_boundarry.plt')
-    write(100,*) 'variables = "X" "Y"'
-    do i=1,ncells_bndr
-      ic=cell_bndr(i)
-      write(100,*) cell(ic)%x,cell(ic)%y
+    !--------------------------------------------------------------------------!
+    ! determine interior and boundary edges
+    !--------------------------------------------------------------------------!
+    if (allocated(idum1)) deallocate(idum1)
+    if (allocated(idum2)) deallocate(idum2)
+    if (allocated(idum3)) deallocate(idum3)
+    allocate(idum1(nedges), idum2(nedges), idum3(nedges))
+    idum1(:)=0
+    idum2(:)=0
+    idum3(:)=0
+    nedges_intr = 0
+    nedges_bndr = 0
+    do ie=1,nedges
+      if (edge(ie)%c1 ==0 .and. edge(ie)%c2 >0) then
+        nedges_bndr = nedges_bndr + 1
+        idum1(nedges_bndr) = ie
+        idum3(nedges_bndr) = edge(ie)%c2
+      elseif (edge(ie)%c1 >0 .and. edge(ie)%c2 ==0) then
+        nedges_bndr = nedges_bndr + 1
+        idum1(nedges_bndr) = ie
+        idum3(nedges_bndr) = edge(ie)%c1
+      elseif  (edge(ie)%c1 >0 .and. edge(ie)%c2 >0) then
+        nedges_intr = nedges_intr + 1
+        idum2(nedges_intr) = ie
+      else
+        write(*,*) 'no way !!!'
+      endif
     enddo
-    close(100)
+    allocate(edge_intr(nedges_intr))
+    allocate(edge_bndr(nedges_bndr))
+    allocate(bedge_cell(nedges_bndr))
+    edge_bndr(1:nedges_bndr) = idum1(1:nedges_bndr)
+    edge_intr(1:nedges_intr) = idum2(1:nedges_intr)
+    bedge_cell(1:nedges_bndr) = idum3(1:nedges_bndr)
+
+    do ib=1,nbndries
+      bndry(ib)%nedges = 0
+      idum3 = 0
+      do i=1,bndry(ib)%ncells
+        ic=bndry(ib)%cell(i)
+        do ie=1,cell(ic)%nvrt
+          je=cell(ic)%edge(ie)
+          if (edge(je)%c1 ==ic .and. edge(je)%c2 ==0) then
+            bndry(ib)%nedges = bndry(ib)%nedges + 1
+            idum3(bndry(ib)%nedges) = je
+          elseif (edge(je)%c1 ==0 .and. edge(je)%c2 ==ic) then
+            bndry(ib)%nedges = bndry(ib)%nedges + 1
+            idum3(bndry(ib)%nedges) = je
+          endif
+        enddo
+      enddo
+      allocate(bndry(ib)%edge( bndry(ib)%nedges ))
+      bndry(ib)%edge(1:bndry(ib)%nedges) = idum3(1:bndry(ib)%nedges)
+    enddo
+
+    if (nedges_bndr /= sum(bndry(1:nbndries)%nedges)) then
+      write(*,*) '#s of boundary edges/faces does not match'
+      write(*,*) 'error in mod: grid_procs, sub: grid_data'
+      stop
+    endif
 
     return
   end subroutine grid_data
@@ -627,5 +803,83 @@ module grid_procs
     return
   end function tri_area
 
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine grid_data_verify
+    implicit none
+
+    integer   :: i,j, ic,in,iv,ie, jc,je, istat
+    real      :: vol,vol1,vol2, xf,nx,af, xc,yc
+
+    !--------------------------------------------------------------------------!
+    ! compare computed aread with Green theorem
+    !--------------------------------------------------------------------------!
+    vol1 = 0.d0
+    do ic=1,ncells
+      vol1 = vol1 + cell(ic)%vol
+    enddo
+
+    vol2= 0.d0
+    do ic=1,ncells
+      vol=0.d0
+      do ie=1,cell(ic)%nvrt
+        je=cell(ic)%edge(ie)
+        nx= edge(je)%nx * cell(ic)%nrmlsign(ie)
+        xf= edge(je)%x
+        af= edge(je)%area
+        vol = vol +  nx*xf*af
+      enddo
+      vol2 = vol2 + vol
+    enddo
+
+
+    !--------------------------------------------------------------------------!
+    ! write out grid information
+    !--------------------------------------------------------------------------!
+    if (proc_id==0) then
+      open(iunit_log_grid,file=trim(file_log_grid),status='unknown',IOSTAT=istat)
+
+      write(iunit_log_grid,*)
+      write(iunit_log_grid,'(a45,i0)') 'number of nodes: ',nnodes
+      write(iunit_log_grid,'(a45,i0)') 'number of triangle cells: ',ncells_tri
+      write(iunit_log_grid,'(a45,i0)') 'number of quadrilateral cells: ',ncells_quad
+      write(iunit_log_grid,'(a45,i0)') 'number of total cells: ',ncells
+      write(iunit_log_grid,'(a45,i0)') 'number of total edges: ',nedges
+      write(iunit_log_grid,'(a45,i0)') 'number of total bondary edges: ',nedges_bndr
+      write(iunit_log_grid,'(a45,i0)') 'number of total bondary cells: ',ncells_bndr
+
+      write(iunit_log_grid,*)
+      write(iunit_log_grid,'(a44,en20.11)') " Sum of the cell volumes via numerical cal:", vol1
+      write(iunit_log_grid,'(a44,en20.11)') " Sum of the cell volumes via Green theorem:", vol2
+      write(iunit_log_grid,'(a45,en20.11)') 'min cell volume: ',minval(cell(1:ncells)%vol)
+      write(iunit_log_grid,'(a45,en20.11)') 'max cell volume: ',maxval(cell(1:ncells)%vol)
+
+      write(iunit_log_grid,*)
+      write(iunit_log_grid,'(a,en20.11)') " cell effective length, sqrt[sum(vol)/ncells]:", heff1
+      write(iunit_log_grid,'(a,en20.11)') " cell effective length, sum[sqrt(vol)]/ncells:", heff2
+    endif
+
+
+    !--------------------------------------------------------------------------!
+    ! write out cell normals
+    !--------------------------------------------------------------------------!
+    if (proc_id==0) then
+      open(iunit_log_grid,file='log_grid_cell_normals.plt', status='unknown',IOSTAT=istat)
+      write(iunit_log_grid,'(a)') 'VARIABLES ="x", "y", "nx", "ny"'
+      do ic=1,ncells
+        do ie=1,cell(ic)%nvrt
+          je=cell(ic)%edge(ie)
+          xc=edge(je)%nx * cell(ic)%nrmlsign(ie)
+          yc=edge(je)%ny * cell(ic)%nrmlsign(ie)
+          write(iunit_log_grid,*) cell(ic)%x, cell(ic)%y, xc, yc
+        enddo
+      enddo
+      close(iunit_log_grid)
+    endif
+
+    return
+  end subroutine grid_data_verify
 
 end module grid_procs

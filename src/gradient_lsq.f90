@@ -1,6 +1,8 @@
 module gradient_lsq
 
-  use input,  only  : grad_cellcntr_lsq_pow, lgrad_lsq_fn, lgrad_lsq_nn
+  use mainparam,      only  : nvar
+  use input,          only  : grad_cellcntr_lsq_pow, lgrad_lsq_fn, lgrad_lsq_nn
+  use data_solution,  only  : pvar, grad
   use data_grid
   use grid_procs
   use interpolation
@@ -9,6 +11,7 @@ module gradient_lsq
 
   private
   real,save                 :: lsq_p
+  logical,save              :: grad_lsq_lverify
 
   type lsq_type
     integer                       :: ncells
@@ -20,7 +23,7 @@ module gradient_lsq
   type(lsq_type),dimension(:),pointer  :: lsq
 
   private :: setup_fn, setup_nn
-  public  :: grad_lsq_init, grad_lsq_fn, grad_lsq_nn
+  public  :: grad_lsq_init, grad_lsq, grad_lsq_test !grad_lsq_fn, grad_lsq_nn,
 
 contains
 
@@ -49,6 +52,12 @@ contains
       !-- setup gradient opertor at cell centers: Green-Gauss node-based (ggnb)
       call setup_nn
     endif
+
+
+    !--------------------------------------------------------------------------!
+    ! verify LSQ coefficents via linear function
+    !--------------------------------------------------------------------------!
+    call grad_lsq_verify
 
     return
   end subroutine grad_lsq_init
@@ -337,21 +346,19 @@ contains
 
     enddo
 
-
-
-    open(100,file='grid_lsqnn.plt')
-    do ic=1000,1100 !,ncells
-      write(100,'(a)') 'VARIABLES ="X", "Y"'
-      write(100,'(a)') 'zone i=1, j=1, f=point'
-      write(100,*) cell(ic)%x,cell(ic)%y
-      write(100,'(a)') 'VARIABLES ="X", "Y"'
-      write(100,'(a,i0,a)') 'zone i=',lsq(ic)%ncells, ', j=1, f=point'
-      do in=1,lsq(ic)%ncells
-        jc=lsq(ic)%cell(in)
-        write(100,*) cell(jc)%x,cell(jc)%y
-      enddo
-    end do
-    close(100)
+    ! open(100,file='grid_lsqnn.plt')
+    ! do ic=1000,1100 !,ncells
+    !   write(100,'(a)') 'VARIABLES ="X", "Y"'
+    !   write(100,'(a)') 'zone i=1, j=1, f=point'
+    !   write(100,*) cell(ic)%x,cell(ic)%y
+    !   write(100,'(a)') 'VARIABLES ="X", "Y"'
+    !   write(100,'(a,i0,a)') 'zone i=',lsq(ic)%ncells, ', j=1, f=point'
+    !   do in=1,lsq(ic)%ncells
+    !     jc=lsq(ic)%cell(in)
+    !     write(100,*) cell(jc)%x,cell(jc)%y
+    !   enddo
+    ! end do
+    ! close(100)
 
     return
   end subroutine setup_nn
@@ -360,7 +367,31 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grad_lsq_fn (fc,dfc)
+  subroutine grad_lsq
+
+    implicit  none
+    integer           :: ic,jc,in,ivar
+
+    grad = 0.d0
+
+    do ivar=1,nvar
+      do ic=1,ncells
+        do in=1,lsq(ic)%ncells
+          jc=lsq(ic)%cell(in)
+          grad(ivar,ic,1) = grad(ivar,ic,1) + lsq(ic)%coef(1,in)*(pvar(ivar,jc)-pvar(ivar,ic))*lsq(ic)%w(in)
+          grad(ivar,ic,2) = grad(ivar,ic,2) + lsq(ic)%coef(2,in)*(pvar(ivar,jc)-pvar(ivar,ic))*lsq(ic)%w(in)
+        enddo
+      end do
+    enddo
+
+    return
+  end subroutine grad_lsq
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine grad_lsq_test (fc,dfc)
     implicit  none
 
     real,intent(in)   :: fc(ncells)
@@ -376,28 +407,93 @@ contains
     end do
 
     return
-  end subroutine grad_lsq_fn
+  end subroutine grad_lsq_test
+
+  ! !============================================================================!
+  ! !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  ! !============================================================================!
+  ! subroutine grad_lsq_fn (fc,dfc)
+  !   implicit  none
+  !
+  !   real,intent(in)   :: fc(ncells)
+  !   real,intent(out)  :: dfc(ncells,2)
+  !   integer           :: ic,jc,in
+  !
+  !   do ic=1,ncells
+  !     do in=1,lsq(ic)%ncells !cell(ic)%nvrt
+  !       jc=lsq(ic)%cell(in)
+  !       dfc(ic,1) = dfc(ic,1) + lsq(ic)%coef(1,in)*(fc(jc)-fc(ic))*lsq(ic)%w(in)
+  !       dfc(ic,2) = dfc(ic,2) + lsq(ic)%coef(2,in)*(fc(jc)-fc(ic))*lsq(ic)%w(in)
+  !     enddo
+  !   end do
+  !
+  !   return
+  ! end subroutine grad_lsq_fn
+  !
+  !
+  ! !============================================================================!
+  ! !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  ! !============================================================================!
+  ! subroutine grad_lsq_nn (fc,dfc)
+  !   implicit  none
+  !
+  !   real,intent(in)   :: fc(ncells)
+  !   real,intent(out)  :: dfc(ncells,2)
+  !   integer           :: ic,jc,in
+  !
+  !   do ic=1,ncells
+  !     do in=1,lsq(ic)%ncells
+  !       jc=lsq(ic)%cell(in)
+  !       dfc(ic,1) = dfc(ic,1) + lsq(ic)%coef(1,in)*(fc(jc)-fc(ic))*lsq(ic)%w(in)
+  !       dfc(ic,2) = dfc(ic,2) + lsq(ic)%coef(2,in)*(fc(jc)-fc(ic))*lsq(ic)%w(in)
+  !     enddo
+  !   end do
+  !
+  !   return
+  ! end subroutine grad_lsq_nn
 
 
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grad_lsq_nn (fc,dfc)
+  subroutine grad_lsq_verify
     implicit  none
 
-    real,intent(in)   :: fc(ncells)
-    real,intent(out)  :: dfc(ncells,2)
     integer           :: ic,jc,in
+    real              :: xc,yc, xnb,ynb, diff,dfx,dfy
+    real,parameter    :: cstx=2.d0, csty=1.d0
+
+    grad_lsq_lverify = .true.
 
     do ic=1,ncells
+      xc=cell(ic)%x
+      yc=cell(ic)%y
+      dfx=0.d0
+      dfy=0.d0
       do in=1,lsq(ic)%ncells
         jc=lsq(ic)%cell(in)
-        dfc(ic,1) = dfc(ic,1) + lsq(ic)%coef(1,in)*(fc(jc)-fc(ic))*lsq(ic)%w(in)
-        dfc(ic,2) = dfc(ic,2) + lsq(ic)%coef(2,in)*(fc(jc)-fc(ic))*lsq(ic)%w(in)
+        xnb=cell(jc)%x
+        ynb=cell(jc)%y
+        diff = csty*ynb + cstx*xnb - (csty*yc + cstx*xc)
+        dfx = dfx + lsq(ic)%coef(1,in)*(diff)*lsq(ic)%w(in)
+        dfy = dfy + lsq(ic)%coef(2,in)*(diff)*lsq(ic)%w(in)
       enddo
+
+      if ( abs(dfx-cstx) > 1.0e-10 .or. abs(dfy-csty) > 1.0e-10) then
+        write(*,*) " df/dx = ", dfx, " exact df/dx =",cstx
+        write(*,*) " df/dy = ", dfy, " exact df/dy =",csty
+        grad_lsq_lverify = .false.
+      endif
     end do
 
+    if (.not.grad_lsq_lverify) then
+      write(*,*) " LSQ coefficients are not correct. See above. Stop."
+      stop
+    else
+      write(*,*) " Verified: LSQ coefficients are exact for a linear function."
+    endif
+
     return
-  end subroutine grad_lsq_nn
+  end subroutine grad_lsq_verify
 
 end module gradient_lsq
