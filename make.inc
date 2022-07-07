@@ -23,13 +23,13 @@ DEBUG = PRD
 #------------------------------------------------------
 ifneq (,$(findstring INTEL,$(FM))) #-- INTEL COMPILERS
   FFLAGC = -r8 -Ofast -fpp -convert big_endian -traceback -qopenmp -mcmodel=medium
-  FFLAGL = -r8 -Ofast -fPIC 
+  FFLAGL = -r8 -Ofast -fPIC
   FFDEBG = -g -shared-intel -debug inline-debug-info -check bounds
   FCOMPL = ${FC}
 else ifneq (,$(findstring CRAY,$(FM))) #-- CRAY COMPILERS
   FFLAGC = -s real64 -Ofast -e P -h byteswapio
-  FFLAGL = -s real64 -Ofast -fPIC 
-  FFDEBG = -g 
+  FFLAGL = -s real64 -Ofast -fPIC
+  FFDEBG = -g
   FCOMPL = ${FC}
 else ifneq (,$(findstring PGI,$(FM))) #-- PGI GROUP COMPILERS
   FFLAGC = -r8 -Ofast -Mpreprocess -byteswapio -traceback -mp -mcmodel=medium
@@ -51,7 +51,7 @@ endif
 #------------------------------------------------------
 # Library
 #------------------------------------------------------
-LIBS    = -L ./../libs -lrefblas 
+LIBS    = -L ./../libs -ltecio -L ./../libs -lrefblas -lstdc++
 
 #------------------------------------------------------
 # Executable directory
