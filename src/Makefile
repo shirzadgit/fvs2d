@@ -26,11 +26,17 @@ include ../make.inc
 # Source Files
 #----------------------------------------------------------------------------------------
 OBJS = fvs2d.o
-MODOBJS =	mainparam.o input.o kdtree2.o data_grid.o data_sol.o grid_procs.o interpolation.o \
-					gradient_ggcb.o gradient_ggnb.o gradient_lsq.o gradient.o \
-					mms_euler2d.o \
+MODOBJS =	mainparam.o input.o kdtree2.o \
+					data_grid.o data_solution.o \
+					grid_procs.o \
+					interpolation.o \
+					gradient_ggcb.o gradient_ggnb.o gradient_lsq.o gradient.o gradient_limiter.o \
+					runge_kutta.o \
+					mms.o \
 					initialize.o \
 					flux_invscid.o residual.o \
+					tecplot.o \
+					io.o \
 					test.o
 
 
