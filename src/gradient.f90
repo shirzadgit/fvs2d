@@ -1,8 +1,7 @@
 module gradient
 
-  use data_grid
+  use data_grid,  only  : ncells
   use input
-  use grid_procs
   use gradient_ggcb
   use gradient_ggnb
   use gradient_lsq
@@ -40,38 +39,55 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine gradient_cellcntr (fc,dfc)
+  subroutine compute_gradient_cellcntr
+    implicit  none
+
+
+    if (lgrad_ggnb) then
+      call grad_ggnb
+      !call grad_ggnb_exp(fc,dfc)
+
+    elseif (lgrad_ggcb) then
+      call grad_ggcb
+
+    elseif (lgrad_lsq) then
+      call grad_lsq
+
+    endif
+
+    return
+  end subroutine compute_gradient_cellcntr
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine gradient_cellcntr_test (fc,dfc)
     implicit  none
 
     real,intent(in)   :: fc(ncells)
     real,intent(out)  :: dfc(ncells,2)
-    integer           :: i,j, ic,ic1, ie,ie1, in,iv,iv1,iv2, nt
-    real              :: af,nxf,nyf
-    real,allocatable  :: fv(:)
 
     dfc(:,:)=0.d0
 
     if (lgrad_ggnb) then
-      !call grad_ggnb(fc,dfc)
-      call grad_ggnb_exp(fc,dfc)
+      call grad_ggnb_test (fc,dfc)
+      !call grad_ggnb_exp(fc,dfc)
 
     elseif (lgrad_ggcb) then
-      call grad_ggcb(fc,dfc)
+      call grad_ggcb_test (fc,dfc)
 
     elseif (lgrad_lsq) then
-      if (lgrad_lsq_fn) then
-        call grad_lsq_fn(fc,dfc)
-
-      elseif (lgrad_lsq_nn) then
-        call grad_lsq_nn (fc,dfc)
-      endif
-
-    else
-      write(*,*) 'error: Green-Gauss node-based and cell-based are only implemented!'
-      stop 'error in gradient_cellcntr'
+      call grad_lsq_test (fc,dfc)
+      ! if (lgrad_lsq_fn) then
+      !   call grad_lsq_fn(fc,dfc)
+      !
+      ! elseif (lgrad_lsq_nn) then
+      !   call grad_lsq_nn (fc,dfc)
+      ! endif
     endif
 
     return
-  end subroutine gradient_cellcntr
+  end subroutine gradient_cellcntr_test
 
 end module gradient
