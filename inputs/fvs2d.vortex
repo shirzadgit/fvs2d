@@ -1,0 +1,6 @@
+x0,y0     --- x/y center of isentropic vortex
+Kappa     --- Strength of isentropic vortex (Gamma/2/pi)
+rho_inf   --- freestream value: density
+  u_inf   --- freestream value: u-velocity
+  v_inf   --- freestream value: v-velocity
+  p_inf   --- freestream value: pressure
