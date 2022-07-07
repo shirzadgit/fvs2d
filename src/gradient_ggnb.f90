@@ -1,6 +1,8 @@
 module gradient_ggnb
 
+  use mainparam,      only  : nvar
   use data_grid
+  use data_solution,  only  : pvar, grad
   use interpolation
 
   implicit none
@@ -15,7 +17,7 @@ module gradient_ggnb
   type(ggnb_type),dimension(:),pointer  :: ggnb
 
   private :: setup
-  public  :: grad_ggnb_init, grad_ggnb, grad_ggnb_exp
+  public  :: grad_ggnb_init, grad_ggnb, grad_ggnb_exp, grad_ggnb_test
 
 contains
 
@@ -178,7 +180,40 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grad_ggnb (fc,dfc)
+  subroutine grad_ggnb
+
+    implicit  none
+    integer           :: i,j, ic,jc, ie,je, in,iv, ivar
+
+    grad = 0.d0
+
+    do ivar=1,nvar
+      do ic=1,ncells
+        grad(ivar,ic,1)= ggnb(ic)%coef0(1) * pvar(ivar,ic)
+        grad(ivar,ic,2)= ggnb(ic)%coef0(2) * pvar(ivar,ic)
+        i=0
+        do in=1,cell(ic)%nvrt
+          iv=cell(ic)%node(in)
+          do j=1,node(iv)%ncells
+            jc=node(iv)%cell(j)
+            i=i+1
+            grad(ivar,ic,1) = grad(ivar,ic,1) + ggnb(ic)%coefedg(in,1) * ggnb(ic)%coefnb(i) * pvar(ivar,jc)
+            grad(ivar,ic,2) = grad(ivar,ic,2) + ggnb(ic)%coefedg(in,2) * ggnb(ic)%coefnb(i) * pvar(ivar,jc)
+          end do
+        end do
+        grad(ivar,ic,1) = grad(ivar,ic,1)/cell(ic)%vol
+        grad(ivar,ic,2) = grad(ivar,ic,2)/cell(ic)%vol
+      end do
+    enddo
+
+    return
+  end subroutine grad_ggnb
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine grad_ggnb_test (fc,dfc)
     implicit  none
 
     real,intent(in)   :: fc(ncells)
@@ -205,8 +240,7 @@ contains
     end do
 
     return
-  end subroutine grad_ggnb
-
+  end subroutine grad_ggnb_test
 
 
   !============================================================================!

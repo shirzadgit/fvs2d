@@ -1,6 +1,8 @@
 module gradient_ggcb
 
+  use mainparam,      only  : nvar
   use data_grid
+  use data_solution,  only  : pvar,grad
 
   implicit none
 
@@ -15,7 +17,7 @@ module gradient_ggcb
   type(ggcb_type),dimension(:),pointer  :: ggcb
 
   private :: setup
-  public  :: grad_ggcb_init, grad_ggcb
+  public  :: grad_ggcb_init, grad_ggcb, grad_ggcb_test
 
 contains
 
@@ -111,13 +113,40 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grad_ggcb (fc,dfc)
+  subroutine grad_ggcb
+
+    implicit  none
+    integer           :: i,j, ic,ic1, ie,ie1, in,iv,iv1,iv2, ivar
+
+    grad = 0.d0
+
+    do ivar=1,nvar
+      do ic=1,ncells
+        grad(ivar,ic,1)= ggcb(ic)%coef0(1) * pvar(ivar,ic)
+        grad(ivar,ic,2)= ggcb(ic)%coef0(2) * pvar(ivar,ic)
+        do ie=1,cell(ic)%nvrt
+          ic1=ggcb(ic)%ptr(ie)
+          grad(ivar,ic,1) = grad(ivar,ic,1) + ggcb(ic)%coefnb(ie,1)*pvar(ivar,ic1)
+          grad(ivar,ic,2) = grad(ivar,ic,2) + ggcb(ic)%coefnb(ie,2)*pvar(ivar,ic1)
+        end do
+        grad(ivar,ic,1) = grad(ivar,ic,1)/cell(ic)%vol
+        grad(ivar,ic,2) = grad(ivar,ic,2)/cell(ic)%vol
+      end do
+    enddo
+
+    return
+  end subroutine grad_ggcb
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine grad_ggcb_test (fc,dfc)
     implicit  none
 
     real,intent(in)   :: fc(ncells)
     real,intent(out)  :: dfc(ncells,2)
     integer           :: i,j, ic,ic1, ie,ie1, in,iv,iv1,iv2, nt
-    real,allocatable  :: fv(:)
 
     dfc(:,:)=0.d0
 
@@ -134,6 +163,6 @@ contains
     end do
 
     return
-  end subroutine grad_ggcb
+  end subroutine grad_ggcb_test
 
 end module gradient_ggcb
