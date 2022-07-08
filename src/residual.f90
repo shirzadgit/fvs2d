@@ -122,7 +122,9 @@ contains
 
 
     ! dQ/dt = -residual
-    resid = -resid
+    do ic=1,ncells
+      resid(1:nvar,ic) = -resid(1:nvar,ic)/cell(ic)%vol
+    enddo
 
     return
   end subroutine compute_residual
