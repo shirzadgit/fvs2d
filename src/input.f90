@@ -106,7 +106,7 @@ contains
 
 
 
-    dtsubstep = dble(ntimes)/dble(nsubsteps)
+    dtsubstep = dt/dble(nsubsteps)
     if (ntstart==0) lvortex=.false.
 
     !--------------------------------------------------------------------------!
