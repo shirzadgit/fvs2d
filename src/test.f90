@@ -25,8 +25,8 @@ contains
 
     allocate(fve(nnodes), fce(ncells), dfve(nnodes,2), dfce(ncells,2))
 
-    !call verify_vortex
-    !return
+    call verify_vortex
+    return
 
     call test_analytic
     !

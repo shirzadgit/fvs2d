@@ -41,6 +41,8 @@ contains
       deallocate(xy4)
     endif
 
+
+    call cvar2pvar
     allocate(f8(nnodes), f4(nnodes,nvar))
     do ivar=1,nvar
       call interpolate_cell2node(pvar(ivar,1:ncells), f8)

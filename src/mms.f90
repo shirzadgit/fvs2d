@@ -223,7 +223,7 @@ contains
     real,intent(out)  :: pvar_vortex(nvar)
     real              :: rho_inf, u_inf, v_inf, p_inf, T_inf, K
     real              :: dx,dy,r
-    real              :: rho, u, v, p, tem
+    real              :: rho, u, v, p, temp
 
     !--
     K = vortex_kappa
@@ -239,12 +239,18 @@ contains
     dy = y - vortex_pos(2)
      r = sqrt( dx**2 + dy**2 )
 
-    u = u_inf - K/(2.d0*pi) * dy * exp(0.5d0*(1-r**2))
-    v = v_inf + K/(2.d0*pi) * dx * exp(0.5d0*(1-r**2))
+    u = u_inf - K/(2.d0*pi) * dy * exp(0.5d0*(1.d0-r**2))
+    v = v_inf + K/(2.d0*pi) * dx * exp(0.5d0*(1.d0-r**2))
 
-    tem =   T_inf - (K/(2.d0*pi))**2 *  (gamma-1.d0)/(2.d0*gamma) * exp(0.5d0*(1-r**2))
-    rho = rho_inf * tem**( 1.d0/(gamma-1.d0)) !Density
-      p =   p_inf * tem**(gamma/(gamma-1.d0)) !Pressure
+    temp =   T_inf - (K/(2.d0*pi))**2 *  (gamma-1.d0)/(2.d0*gamma) * exp(1.d0-r**2)
+    !   p = ((rho_inf**gamma)/p_inf * temp**gamma)**(1.d0/(gamma-1.d0))
+    ! rho = p/temp
+
+    rho = temp**(1.d0/(gamma-1.d0))
+      p = rho**gamma
+
+    ! rho = rho_inf * tem**( 1.d0/(gamma-1.d0)) !Density
+    !   p =   p_inf * tem**(gamma/(gamma-1.d0)) !Pressure
 
     pvar_vortex(ir) = rho
     pvar_vortex(iu) = u
