@@ -49,7 +49,6 @@ contains
       h_rk(2)=h/2.d0;  rk_coef(2)=bk
       h_rk(3)=h;       rk_coef(3)=ck
       h_rk(4)=h/6.d0;  rk_coef(4)=dk
-      write(*,*) h
     endif
 
     !--------------------------------------------------------------------------!
@@ -129,7 +128,7 @@ contains
 
         cput1=MPI_WTIME()
         call compute_residual;
-        cput2=MPI_WTIME(); cput_drdt=cput_drdt + cput2 - cput1; 
+        cput2=MPI_WTIME(); cput_drdt=cput_drdt + cput2 - cput1;
 
          fcvar(1:nvar, 1:ncells) = fcvar(1:nvar, 1:ncells) + rk_coef(rk) * resid(1:nvar, 1:ncells)
 
@@ -137,7 +136,6 @@ contains
           cvar(1:nvar, 1:ncells) = cvar0(1:nvar, 1:ncells) +    h_rk(rk) * resid(1:nvar, 1:ncells)
         elseif (rk==rk_nstages) then
           cvar(1:nvar, 1:ncells) = cvar0(1:nvar, 1:ncells) +    h_rk(rk) * fcvar(1:nvar, 1:ncells)
-          !write(*,*) maxval(abs(resid)),minval(abs(resid))
         endif
 
         !cput1=MPI_WTIME();
