@@ -491,7 +491,7 @@ contains
 
     allocate( wrk1(nnodes), wrk3(nnodes), wrk2(nnodes,2))
 
-    call compute_residual
+    call compute_residual (0.d0)
 
 
     !-- compute error

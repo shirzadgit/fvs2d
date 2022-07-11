@@ -487,10 +487,11 @@ contains
     end do
 
     if (.not.grad_lsq_lverify) then
-      write(*,*) " LSQ coefficients are not correct. See above. Stop."
+      write(*,*) " LSQ coefficients are not correct"
+      write(*,*) " Error in mod: gradient_lsq, sub: grad_lsq_verify"
       stop
-    else
-      write(*,*) " Verified: LSQ coefficients are exact for a linear function."
+    !else
+    !  write(*,*) " Verified: LSQ coefficients are exact for a linear function."
     endif
 
     return

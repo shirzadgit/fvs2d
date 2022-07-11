@@ -25,7 +25,7 @@ program fvs2d
   integer           :: stat(MPI_STATUS_SIZE)
 
   integer           :: istep,istep_save,istep_av,it
-  real              :: t1,t2
+  real              :: t1,t2, t0
   real              :: cput1,cput2,cputot
   real,parameter    :: min=60.d0, hr=3600.d0
 
@@ -129,29 +129,25 @@ program fvs2d
   istep = 0
   istep_save=0
   istep_av=0
-  do it=ntstart,ntstart+ntimes-1
+  t0 = dble(ntstart-1)*dt
+  !do it=ntstart,ntstart+ntimes-1
+  do it=1,nsaves
     istep = istep + 1
 
     !--begin/end times
-    t1 = dble(it-1)*dt
-    t2 = dble(it)*dt
+    t1 = t0   !dble(it-1)*dtsave(it) + t0
+    t2 = t1 + dtsave(it)
 
     !-- integrate from t1 to t2
-    call time_integration (t1)
+    call time_integration (t1, nsubsteps(it))
 
     !-- output the solution at check point for user
-    !write(*,'(a,i6,a,i4,a,e16.8)') 'time-step=',istep,' , proc=',proc_id,' , rzw=',rz((1+m1)/2,1);
-    write(*,*) 'time-step', it, 'done'
+    write(*,'(i5,a)') nsubsteps(it),' time-steps done'
 
     !-- write out output files
-    !call io_write_inst(istep)
-    call io_write_inst
+    call io_write_inst(t2, nsubsteps(it))
 
-    !-- write out entire domain for all nvar in double precision
-    if (mod(istep,itsave)==0) then
-      istep_save=istep_save+1
-      !call io_write_save(istep_save)
-    endif
+    t0 = t2;
   enddo
 
 

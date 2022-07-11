@@ -1,8 +1,8 @@
 module mms
 
   use mainparam,      only  : nvar, file_vortex, iunit_vortex
-  use input,          only  : gamma, lvortex
-  use data_grid,      only  : ncells, cell, node
+  use input,          only  : gamma, lvortex, dt
+  use data_grid !,      only  : ncells, cell, node
   use data_solution,  only  : ir,iu,iv,ip
 
   implicit none
@@ -21,7 +21,7 @@ module mms
   real,save       :: vortex_inf(nvar)
 
   public  :: mms_init, mms_compute_euler2d, manufactured_sol, mms_source, mms_sol
-  public  :: compute_isentropic_vortex, vortex_inf
+  public  :: compute_isentropic_vortex, vortex_inf, error_isentropic_vortex
 
 contains
 
@@ -216,13 +216,13 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine compute_isentropic_vortex (x,y,pvar_vortex)
+  subroutine compute_isentropic_vortex (t,x,y,pvar_vortex)
     implicit none
 
-    real,intent(in)   :: x,y
+    real,intent(in)   :: x,y,t
     real,intent(out)  :: pvar_vortex(nvar)
     real              :: rho_inf, u_inf, v_inf, p_inf, T_inf, K
-    real              :: dx,dy,r
+    real              :: xc,yc, dx,dy,r
     real              :: rho, u, v, p, temp
 
     !--
@@ -235,8 +235,11 @@ contains
       p_inf = vortex_inf(ip)
       T_inf = p_inf/rho_inf
 
-    dx = x - vortex_pos(1)
-    dy = y - vortex_pos(2)
+    xc = vortex_pos(1) + u_inf*t
+    yc = vortex_pos(2) + v_inf*t
+
+    dx = x - xc
+    dy = y - yc
      r = sqrt( dx**2 + dy**2 )
 
     u = u_inf - K/(2.d0*pi) * dy * exp(0.5d0*(1.d0-r**2))
@@ -259,5 +262,70 @@ contains
 
     return
   end subroutine compute_isentropic_vortex
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine error_isentropic_vortex(time)
+    use data_solution,  only  : cvar
+    implicit none
+
+    real,intent(in) :: time
+    integer         :: i,ic
+    real            :: dr,dru,drv, pv(nvar)
+    real            :: err_dr_max, err_dr_L1, err_dr_L2
+    real            :: err_dru_max, err_dru_L1, err_dru_L2
+    real            :: err_drv_max, err_drv_L1, err_drv_L2
+
+    if (time==dt) then
+      open(iunit_vortex, file='log_vortex_err.plt')
+      write(iunit_vortex,'(a)') 'variables = "t", '
+      write(iunit_vortex,'(a)') '"<greek>r</greek><sub>max</sub>",  "<greek>r</greek><sub>L1</sub>", "<greek>r</greek><sub>L2</sub>",'
+      write(iunit_vortex,'(a)') '"<greek>r</greek>u<sub>max</sub>",  "<greek>r</greek>u<sub>L1</sub>", "<greek>r</greek>u<sub>L2</sub>",'
+      write(iunit_vortex,'(a)') '"<greek>r</greek>v<sub>max</sub>",  "<greek>r</greek>v<sub>L1</sub>", "<greek>r</greek>v<sub>L2</sub>"'
+    endif
+
+    err_dr_max = 0.d0
+    err_dru_max= 0.d0
+    err_drv_max= 0.d0
+
+    err_dr_L1 = 0.d0
+    err_dru_L1= 0.d0
+    err_drv_L1= 0.d0
+
+    err_dr_L2 = 0.d0
+    err_dru_L2= 0.d0
+    err_drv_L2= 0.d0
+
+    do i=1,ncells_intr
+      ic=cell_intr(i)
+
+      call compute_isentropic_vortex (time,cell(ic)%x,cell(ic)%y,pv)
+
+      dr  = (cvar(ir,ic) - pv(ir))
+      dru = (cvar(iu,ic) - pv(ir)*pv(iu))
+      drv = (cvar(iv,ic) - pv(ir)*pv(iv))
+
+      err_dr_max = max(err_dr_max, abs(dr))
+      err_dr_L1  = err_dr_L1 + abs(dr)
+      err_dr_L2  = err_dr_L2 + dr*dr
+
+      err_dru_max = max(err_dru_max, abs(dru))
+      err_dru_L1  = err_dru_L1 + abs(dru)
+      err_dru_L2  = err_dru_L2 + dru*dru
+
+      err_drv_max = max(err_drv_max, abs(drv))
+      err_drv_L1  = err_drv_L1 + abs(drv)
+      err_drv_L2  = err_drv_L2 + drv*drv
+    enddo
+
+    write(iunit_vortex, '(10(e16.8,1x))') time, err_dr_max,  err_dr_L1 /dble(ncells_intr), sqrt(err_dr_L2) /dble(ncells_intr), &
+                                                err_dru_max, err_dru_L1/dble(ncells_intr), sqrt(err_dru_L2)/dble(ncells_intr), &
+                                                err_drv_max, err_drv_L1/dble(ncells_intr), sqrt(err_drv_L2)/dble(ncells_intr)
+
+    return
+  end subroutine error_isentropic_vortex
+
 
 end module mms

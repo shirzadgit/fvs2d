@@ -13,9 +13,12 @@ module input
   real,save         :: mach_inf   !-- Mach number
   real,save         :: gamma
   real,save         :: aoa_inf_deg!-- free-stream angle of attack (deg)
-  real,save         :: dt         !-- time-step for writing out
-  real,save         :: dtsubstep  !-- time-integration time-step
-  integer,save      :: ntstart,ntimes,nsubsteps,itsave,ntsave
+
+  !-- time integration parameters
+  real,save                 :: dt                     !-- time-integration time-step
+  integer,save              :: ntstart,ntimes,nsaves
+  integer,allocatable,save  :: nsubsteps(:)
+  real,allocatable,save     :: dtsave(:)              !-- time-step for writing out solution
 
   !-- isentropic vortex
   logical,save      :: lvortex
@@ -38,7 +41,7 @@ module input
 
   !-- face re-construction scheme
   integer,save      :: face_reconst_imethd
-  logical,save      :: lface_reconst_linear, lface_reconst_umuscl
+  logical,save      :: lface_reconst_upwind1st, lface_reconst_upwind2nd, lface_reconst_umuscl
 
   !-- inviscid flux discretization scheme
   integer,save      :: flux_inviscd_imethd
@@ -83,8 +86,7 @@ contains
     read(iunit_input,*)
     read(iunit_input,*) dt
     read(iunit_input,*) ntimes
-    read(iunit_input,*) nsubsteps
-    read(iunit_input,*) itsave
+    read(iunit_input,*) nsaves
     read(iunit_input,*) ntstart
     read(iunit_input,*) lvortex
 
@@ -106,7 +108,19 @@ contains
 
 
 
-    dtsubstep = dt/dble(nsubsteps)
+    !dtsubstep = dt/dble(nsubsteps)
+    allocate(dtsave(nsaves), nsubsteps(nsaves))
+    if (mod(ntimes,nsaves)==0) then
+      nsubsteps(1:nsaves) = ntimes/nsaves
+         dtsave(1:nsaves) = dt*dble(nsubsteps(1))
+    else
+      nsubsteps(1:nsaves-1) = int(ntimes/nsaves) + 1
+      nsubsteps(nsaves)     = ntimes - (int(ntimes/nsaves) + 1)*(nsaves-1)
+         dtsave(1:nsaves-1) = dt*dble(nsubsteps(1))
+         dtsave(nsaves)     = dt*dble(nsubsteps(nsaves))
+    endif
+
+
     if (ntstart==0) lvortex=.false.
 
     !--------------------------------------------------------------------------!
@@ -188,10 +202,14 @@ contains
     !--------------------------------------------------------------------------!
     ! Face reconstruction scheme
     !--------------------------------------------------------------------------!
-    lface_reconst_linear=.false.
+    lface_reconst_upwind1st=.false.
+    lface_reconst_upwind2nd=.false.
     lface_reconst_umuscl=.false.
     if (face_reconst_imethd==1) then
-      lface_reconst_linear=.true.
+      lface_reconst_upwind1st=.true.
+
+    elseif (face_reconst_imethd==2) then
+      lface_reconst_upwind2nd=.true.
 
     else
       write(*,*) 'check face reconstruction scheme in input file'
@@ -234,8 +252,12 @@ contains
 
       write(iunit_log_input,'(a35,E16.8)')    'Time-step: ',dt
       write(iunit_log_input,'(a35,i0)')       '#s of total time-steps: ',ntimes
-      write(iunit_log_input,'(a35,i0)')       '#s of sub-steps per time-steps: ',nsubsteps
-      write(iunit_log_input,'(a35,i0)')       'Interval to output save files: ',itsave
+      write(iunit_log_input,'(a35,i0)')       '#s of output solution files: ',nsaves
+      if (mod(ntimes,nsaves)==0) then
+        write(iunit_log_input,'(a35,i0)')       'Interval to output solution files: ',int(ntimes/nsaves)
+      else
+        write(iunit_log_input,'(a35,i0,a3,i0)') 'Interval to output solution files: ',int(ntimes/nsaves)+1,' & ', ntimes-(int(ntimes/nsaves)+1)*(nsaves-1)
+      endif
       write(iunit_log_input,'(a35,i0)')       'Starting time-step: ',ntstart
       write(iunit_log_input,'(a35,e16.8)')    't_inital: ',dble(ntstart-1)*dt
       write(iunit_log_input,'(a35,e16.8)')    't_final : ',dble(ntstart-1)*dt+dble(ntimes)*dt
@@ -269,11 +291,11 @@ contains
         write(iunit_log_input,'(a38,a)') ' Cell-center gradient method:',' Green-Gauss Node-Base'
       elseif (lgrad_lsq) then
         if (grad_cellcntr_lsq_pow==0.d0) then
-          if (lgrad_lsq_fn) write(iunit_log_input,'(a38,a)') ' Cell-center gradient method:',' Unweigghted Least-Squeres based face neighbor stencil'
-          if (lgrad_lsq_nn) write(iunit_log_input,'(a38,a)') ' Cell-center gradient method:',' Unweigghted Least-Squeres based node neighbor stencil'
+          if (lgrad_lsq_fn) write(iunit_log_input,'(a38,a)') ' Cell-center gradient method:',' Unweigghted Least-Squeres based on face neighbor stencil'
+          if (lgrad_lsq_nn) write(iunit_log_input,'(a38,a)') ' Cell-center gradient method:',' Unweigghted Least-Squeres based on node neighbor stencil'
         else
-          if (lgrad_lsq_fn) write(iunit_log_input,'(a38,a,f3.1,a)') ' Cell-center gradient method:',' Weigghted (1/d^',grad_cellcntr_lsq_pow,') Least-Squeres based face neighbor stencil'
-          if (lgrad_lsq_nn) write(iunit_log_input,'(a38,a,f3.1,a)') ' Cell-center gradient method:',' Weigghted (1/d^',grad_cellcntr_lsq_pow,') Least-Squeres based node neighbor stencil'
+          if (lgrad_lsq_fn) write(iunit_log_input,'(a38,a,f3.1,a)') ' Cell-center gradient method:',' Weigghted (1/d^',grad_cellcntr_lsq_pow,') Least-Squeres based on face neighbor stencil'
+          if (lgrad_lsq_nn) write(iunit_log_input,'(a38,a,f3.1,a)') ' Cell-center gradient method:',' Weigghted (1/d^',grad_cellcntr_lsq_pow,') Least-Squeres based on node neighbor stencil'
         endif
       endif
 
@@ -285,8 +307,10 @@ contains
       endif
 
       !-- Face reconstruction
-      if (lface_reconst_linear) then
-        write(iunit_log_input,'(a38,a)') ' Face reconstruction method:',' Linear extrapolation'
+      if (lface_reconst_upwind1st) then
+        write(iunit_log_input,'(a38,a)') ' Face reconstruction method:',' 1st-order upwind'
+      elseif (lface_reconst_upwind2nd) then
+        write(iunit_log_input,'(a38,a)') ' Face reconstruction method:',' 2nd-order upwind'
       elseif (lface_reconst_umuscl) then
         write(iunit_log_input,'(a38,a)') ' Face reconstruction method:',' UMUSCL'
       endif

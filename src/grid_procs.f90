@@ -810,8 +810,9 @@ module grid_procs
   subroutine grid_data_verify
     implicit none
 
-    integer   :: i,j, ic,in,iv,ie, jc,je, istat
+    integer   :: i,j, ic,in,iv,ie, jc,je, istat, ib
     real      :: vol,vol1,vol2, xf,nx,af, xc,yc
+    character :: charbc*1
 
     !--------------------------------------------------------------------------!
     ! compare computed aread with Green theorem
@@ -834,6 +835,17 @@ module grid_procs
       vol2 = vol2 + vol
     enddo
 
+    !--------------------------------------------------------------------------!
+    ! check edge 2 cell index
+    !--------------------------------------------------------------------------!
+    do ie=1,nedges
+      ic = edge(ie)%c1
+      if (ic<=0) then
+        write(*,*) 'edge(ie)%c1 <=0 at edge no.',ie
+        write(*,*) 'stopped at mod: grid_procs, sub: grid_data_verify'
+        stop 'error'
+      endif
+    enddo
 
     !--------------------------------------------------------------------------!
     ! write out grid information
@@ -878,6 +890,25 @@ module grid_procs
       enddo
       close(iunit_log_grid)
     endif
+
+    !--------------------------------------------------------------------------!
+    ! write out cell normals
+    !--------------------------------------------------------------------------!
+    if (proc_id==0) then
+      do ib=1,nbndries
+        write(charbc,'(i1)') ib
+        open(iunit_log_grid,file=trim('log_bndry'//charbc//'.plt'), status='unknown',IOSTAT=istat)
+        write(iunit_log_grid,'(a)') 'VARIABLES ="x", "y", "nx", "ny"'
+        do i=1,bndry(ib)%nedges
+          ie=bndry(ib)%edge(i)
+          write(iunit_log_grid,*) edge(ie)%x, edge(ie)%y, edge(ie)%nx, edge(ie)%ny
+          !write(iunit_log_grid,*) node(edge(ie)%n1)%x, node(edge(ie)%n1)%y
+          !write(iunit_log_grid,*) node(edge(ie)%n2)%x, node(edge(ie)%n2)%y
+        enddo
+        close(iunit_log_grid)
+      enddo
+    endif
+
 
     return
   end subroutine grid_data_verify

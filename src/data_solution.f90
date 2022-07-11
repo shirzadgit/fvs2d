@@ -28,7 +28,7 @@ module data_solution
 
 
   !-- free-stream values
-  real,save                 :: rho_inf, u_inf, v_inf, p_inf
+  real,save                 :: rho_inf, u_inf, v_inf, p_inf, pvar_inf(nvar)
 
 
 contains
@@ -54,6 +54,11 @@ contains
       u_inf = mach_inf*cosd(aoa_inf_deg) !aoa converted from degree to radian
       v_inf = mach_inf*sind(aoa_inf_deg) !aoa converted from degree to radian
       p_inf = 1.d0/gamma
+
+    pvar_inf(ir) = rho_inf
+    pvar_inf(iu) = u_inf
+    pvar_inf(iv) = v_inf
+    pvar_inf(ip) = p_inf  
 
     return
   end subroutine data_solution_init
