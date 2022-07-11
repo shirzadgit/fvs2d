@@ -1,25 +1,24 @@
 ===========================================================================================================================================
 	Flow & Simulation Parameters
 ===========================================================================================================================================
-test      --- Grid base file name without extension (code requires "grid_filename.grid" and "grid_filename.bc")
+vortex    --- Grid base file name without extension (code requires "*.grid" and "*.bc")
 2.e5      --- Reynolds number
 0.5       --- Free-stream Mach number
 0.0       --- Free-stream flow angle (deg)
 1.4d0     --- gamma (cp/cv)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-0.005     --- Time-step (dt)
-10        --- Number of time-steps (#'s dt)
-100       --- Number of substeps per time-step (h=dt/nsubsteps)
-10        --- Frequency for writing all variables for entire domain in double precision format
-1         --- Starting time-step to determine t_initial=(ntstart-1)*dt; (if >1 --> solver will need continuation files; 0--> MMS)
-T					--- compute isentropic vortex: T/F (if T, code requires fvs2d.vortex file)
+0.01      --- Time-step: dt
+4000      --- Number of total time-steps: ntimes
+40        --- Number of output solutions: nsaves ---> write out every [ntimes/nsaves] time-steps
+1         --- Starting time-step: ntstart ---> t_init=(ntstart-1)*dt; (if >1 --> solver will need continuation files; 0--> MMS)
+T         --- compute isentropic vortex: T/F (if T, code requires fvs2d.vortex file)
 ===========================================================================================================================================
 	Temporal & Spatial Discretization Schemes
 ===========================================================================================================================================
-3,fn,0.0  --- cell-center gradient scheme	--->	1:GGCB, 2:GGNB, 3:LSQ (3,fn/nn,p --> p=0:unweighted, p>0:weighted)
-0         --- gradient limiter scheme			--->	0:none, 1:
-1         --- face reconstruction scheme	--->	1:first-order upwind, 2:second-order upwind
-1         --- inviscid flux scheme				--->	1:Roe, 2:
+3,fn,0.0  --- cell-center gradient scheme ---> 1:GGCB, 2:GGNB, 3:LSQ (3,fn/nn,p --> p=0:unweighted, p>0:weighted)
+0         --- gradient limiter scheme     ---> 0:none
+2         --- face reconstruction scheme  ---> 1:first-order upwind, 2:second-order upwind
+1         --- inviscid flux scheme        ---> 1:Roe
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 4         --- Number of stages for R-K time-integration (4 stages for now)
 2         --- Order of accuracy of R-K time-integration (<=stages)
