@@ -18,7 +18,7 @@ T					--- compute isentropic vortex: T/F (if T, code requires fvs2d.vortex file)
 ===========================================================================================================================================
 3,fn,0.0  --- cell-center gradient scheme	--->	1:GGCB, 2:GGNB, 3:LSQ (3,fn/nn,p --> p=0:unweighted, p>0:weighted)
 0         --- gradient limiter scheme			--->	0:none, 1:
-1         --- face reconstruction scheme	--->	1:linear extrapolation, 2:
+1         --- face reconstruction scheme	--->	1:first-order upwind, 2:second-order upwind
 1         --- inviscid flux scheme				--->	1:Roe, 2:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 4         --- Number of stages for R-K time-integration (4 stages for now)
