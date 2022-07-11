@@ -24,7 +24,7 @@ program fvs2d
   integer           :: ierr,errcode
   integer           :: stat(MPI_STATUS_SIZE)
 
-  integer           :: istep,istep_save,istep_av,it
+  integer           :: istep,istep_save,istep_av,it, it_tot
   real              :: t1,t2, t0
   real              :: cput1,cput2,cputot
   real,parameter    :: min=60.d0, hr=3600.d0
@@ -129,6 +129,7 @@ program fvs2d
   istep = 0
   istep_save=0
   istep_av=0
+  it_tot=0
   t0 = dble(ntstart-1)*dt
   !do it=ntstart,ntstart+ntimes-1
   do it=1,nsaves
@@ -142,7 +143,8 @@ program fvs2d
     call time_integration (t1, nsubsteps(it))
 
     !-- output the solution at check point for user
-    write(*,'(i5,a)') nsubsteps(it),' time-steps done'
+    it_tot = it_tot + nsubsteps(it)
+    write(*,'(i5,a)') it_tot,' time-steps done'
 
     !-- write out output files
     call io_write_inst(t2, nsubsteps(it))
