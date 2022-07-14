@@ -38,10 +38,12 @@ module input
   !-- gradient limiter scheme
   integer,save      :: grad_limiter_imethd
   logical,save      :: lgrad_limiter
+  character,save    :: limiter_type*20
 
   !-- face re-construction scheme
   integer,save      :: face_reconst_imethd
   logical,save      :: lface_reconst_upwind1st, lface_reconst_upwind2nd, lface_reconst_umuscl
+  real,save         :: umuscl_cst
 
   !-- inviscid flux discretization scheme
   integer,save      :: flux_inviscd_imethd
@@ -95,7 +97,7 @@ contains
     read(iunit_input,*)
     read(iunit_input,*) grad_cellcntr_imethd, grad_cellcntr_lsq_nghbr, grad_cellcntr_lsq_pow;
     read(iunit_input,*) grad_limiter_imethd
-    read(iunit_input,*) face_reconst_imethd
+    read(iunit_input,*) face_reconst_imethd, umuscl_cst
     read(iunit_input,*) flux_inviscd_imethd
 
     read(iunit_input,*)
@@ -184,18 +186,20 @@ contains
     lgrad_limiter=.false.
     if (grad_limiter_imethd>0) then
       lgrad_limiter=.true.
-      write(*,*) 'scheme not implemented yet!'
-      stop 'scheme not implemented yet!'
-      ! if (grad_limiter_imethd==1) then
-      !
-      ! elseif
-      !
-      !
-      ! else
-      !   write(*,*) 'check gradient limiter scheme in input file'
-      !   write(*,*) 'error at mod: input,  sub: input_read'
-      !   stop
-      ! endif
+      if (grad_limiter_imethd==1) then
+        limiter_type = 'venk'
+
+      elseif (grad_limiter_imethd==2) then
+        limiter_type = 'barth'
+
+      elseif (grad_limiter_imethd==3) then
+        limiter_type = 'albada'
+
+      else
+        write(*,*) 'check gradient limiter scheme in input file'
+        write(*,*) 'error at mod: input,  sub: input_read'
+        stop
+      endif
     endif
 
 
@@ -205,11 +209,17 @@ contains
     lface_reconst_upwind1st=.false.
     lface_reconst_upwind2nd=.false.
     lface_reconst_umuscl=.false.
+
     if (face_reconst_imethd==1) then
       lface_reconst_upwind1st=.true.
+      umuscl_cst = 0.d0
 
     elseif (face_reconst_imethd==2) then
       lface_reconst_upwind2nd=.true.
+      umuscl_cst = 0.d0
+
+    elseif (face_reconst_imethd==3) then
+      lface_reconst_umuscl=.true.
 
     else
       write(*,*) 'check face reconstruction scheme in input file'
@@ -303,7 +313,17 @@ contains
       if (.not.lgrad_limiter) then
         write(iunit_log_input,'(a38,a)') 'Gradient limiter:',' not applied'
       elseif (lgrad_limiter) then
-
+        select case (limiter_type)
+        case ('venk')
+          write(iunit_log_input,'(a38,a)') 'Gradient limiter:',' Venkatakrishnan'
+        case ('barth')
+          write(iunit_log_input,'(a38,a)') 'Gradient limiter:',' Barth and Jespersen'          
+        case ('albada')
+          write(iunit_log_input,'(a38,a)') 'Gradient limiter:',' Van Albada'
+        case default
+          write(iunit_log_input,'(a)')     'Error in limiter type'
+          stop 'error!'
+        end select
       endif
 
       !-- Face reconstruction
@@ -312,7 +332,7 @@ contains
       elseif (lface_reconst_upwind2nd) then
         write(iunit_log_input,'(a38,a)') ' Face reconstruction method:',' 2nd-order upwind'
       elseif (lface_reconst_umuscl) then
-        write(iunit_log_input,'(a38,a)') ' Face reconstruction method:',' UMUSCL'
+        write(iunit_log_input,'(a38,a,f8.4)') ' Face reconstruction method:',' UMUSCL with Kappa=',umuscl_cst
       endif
 
       !-- Inviscid flux discretization
