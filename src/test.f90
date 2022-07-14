@@ -431,7 +431,7 @@ contains
     enddo
 
     !-- compute numerical gradient
-    call gradient_cellcntr_test(fce,df)
+    call gradient_cellcntr_1var(fce,df)
 
     !-- compute effective distance, error
     errx = 0.d0
