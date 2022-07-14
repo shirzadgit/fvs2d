@@ -25,11 +25,15 @@ module mainparam
   character(len=15)       :: file_vortex='fvs2d.vortex'
   integer,parameter       :: iunit_vortex=903
 
+  !-- cp file
+  character(len=15)       :: file_cp='log_cp.plt'
+  integer,parameter       :: iunit_cp=904
+
   !-- log files
   character(len=127)      :: file_log_input='log.fvs2d'
-  integer,parameter       :: iunit_log_input=904
+  integer,parameter       :: iunit_log_input=905
 
   character(len=127)      :: file_log_grid='log.grid'
-  integer,parameter       :: iunit_log_grid=905
+  integer,parameter       :: iunit_log_grid=906
 
 end module mainparam
