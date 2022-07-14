@@ -17,7 +17,7 @@ module gradient_ggcb
   type(ggcb_type),dimension(:),pointer  :: ggcb
 
   private :: setup
-  public  :: grad_ggcb_init, grad_ggcb, grad_ggcb_test
+  public  :: grad_ggcb_init, grad_ggcb, grad_ggcb_1var
 
 contains
 
@@ -141,7 +141,7 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grad_ggcb_test (fc,dfc)
+  subroutine grad_ggcb_1var (fc,dfc)
     implicit  none
 
     real,intent(in)   :: fc(ncells)
@@ -163,6 +163,6 @@ contains
     end do
 
     return
-  end subroutine grad_ggcb_test
+  end subroutine grad_ggcb_1var
 
 end module gradient_ggcb

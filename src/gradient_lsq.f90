@@ -23,7 +23,8 @@ module gradient_lsq
   type(lsq_type),dimension(:),pointer  :: lsq
 
   private :: setup_fn, setup_nn
-  public  :: grad_lsq_init, grad_lsq, grad_lsq_test !grad_lsq_fn, grad_lsq_nn,
+  public  :: grad_lsq_init, grad_lsq, grad_lsq_1var !grad_lsq_fn, grad_lsq_nn,
+  public  :: lsq
 
 contains
 
@@ -391,7 +392,7 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grad_lsq_test (fc,dfc)
+  subroutine grad_lsq_1var (fc,dfc)
     implicit  none
 
     real,intent(in)   :: fc(ncells)
@@ -407,7 +408,7 @@ contains
     end do
 
     return
-  end subroutine grad_lsq_test
+  end subroutine grad_lsq_1var
 
   ! !============================================================================!
   ! !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!

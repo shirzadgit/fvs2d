@@ -62,7 +62,7 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine gradient_cellcntr_test (fc,dfc)
+  subroutine gradient_cellcntr_1var (fc,dfc)
     implicit  none
 
     real,intent(in)   :: fc(ncells)
@@ -71,23 +71,18 @@ contains
     dfc(:,:)=0.d0
 
     if (lgrad_ggnb) then
-      call grad_ggnb_test (fc,dfc)
+      call grad_ggnb_1var (fc,dfc)
       !call grad_ggnb_exp(fc,dfc)
 
     elseif (lgrad_ggcb) then
-      call grad_ggcb_test (fc,dfc)
+      call grad_ggcb_1var (fc,dfc)
 
     elseif (lgrad_lsq) then
-      call grad_lsq_test (fc,dfc)
-      ! if (lgrad_lsq_fn) then
-      !   call grad_lsq_fn(fc,dfc)
-      !
-      ! elseif (lgrad_lsq_nn) then
-      !   call grad_lsq_nn (fc,dfc)
-      ! endif
+      call grad_lsq_1var (fc,dfc)
+
     endif
 
     return
-  end subroutine gradient_cellcntr_test
+  end subroutine gradient_cellcntr_1var
 
 end module gradient

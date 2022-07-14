@@ -12,6 +12,7 @@ module residual
   implicit none
 
   real,save   :: un_max
+  real,save   :: ramp=0.d0
 
 contains
 
@@ -23,9 +24,10 @@ contains
     implicit none
     real,intent(in)   :: time
     integer           :: i,ic,ie,ivar,je, ieL,ieR, icL,icR, k, idum(4), iloc(1), ib
-    real              :: flux(nvar), pfL(nvar),pfR(nvar), ws_max, cfl_max
-    real              :: xcL,ycL, xcR,ycR, xc,yc, xf,yf, nxf,nyf, af
+    real              :: flux(nvar), pfL(nvar),pfR(nvar), ws_max, cfl_max, dum1(nvar), dumL(nvar), dumR(nvar)
+    real              :: xcL,ycL, xcR,ycR, xc,yc, xf,yf, nxf,nyf, af, u_n,u_b,v_b,h_b
     real,allocatable  :: ws_nrml(:), un(:)
+
 
     resid(:,:) = 0.d0
 
@@ -73,8 +75,20 @@ contains
       ycR = cell(icR)%y
 
       !-- re-construct face-value of primative variables
-      pfL(1:nvar) = pvar(1:nvar,icL) + phi_lim(icL) * ((xf-xcL) * grad(1:nvar,icL,1) + (yf-ycL) * grad(1:nvar,icL,2))
-      pfR(1:nvar) = pvar(1:nvar,icR) + phi_lim(icR) * ((xf-xcR) * grad(1:nvar,icR,1) + (yf-ycR) * grad(1:nvar,icR,2))
+      !pfL(1:nvar) = pvar(1:nvar,icL) + phi_lim(icL) * ((xf-xcL) * grad(1:nvar,icL,1) + (yf-ycL) * grad(1:nvar,icL,2))
+      !pfR(1:nvar) = pvar(1:nvar,icR) + phi_lim(icR) * ((xf-xcR) * grad(1:nvar,icR,1) + (yf-ycR) * grad(1:nvar,icR,2))
+
+      dum1(1:nvar) = pvar(1:nvar,icR) - pvar(1:nvar,icL)
+      dumL(1:nvar) = (xf-xcL) * grad(1:nvar,icL,1) + (yf-ycL) * grad(1:nvar,icL,2)
+      dumR(1:nvar) = (xf-xcR) * grad(1:nvar,icR,1) + (yf-ycR) * grad(1:nvar,icR,2)
+
+      pfL(1:nvar) = pvar(1:nvar,icL) + phi_lim(icL) * ( umuscl_cst/2.d0 * dum1(1:nvar) + (1.d0-umuscl_cst)*dumL(1:nvar) )
+      pfR(1:nvar) = pvar(1:nvar,icR) + phi_lim(icR) * (-umuscl_cst/2.d0 * dum1(1:nvar) + (1.d0-umuscl_cst)*dumR(1:nvar) )
+
+      if (time<0.5) then
+        pfL(1:nvar) = pvar(1:nvar,icL)
+        pfR(1:nvar) = pvar(1:nvar,icR)
+      endif
 
       !-- compute inviscid flux
       call compute_flux_invscid (pfL, pfR, nxf,nyf,  flux, ws_max)
@@ -90,6 +104,7 @@ contains
     !--------------------------------------------------------------------------!
     ! compute left and right fluxes for boundary edges/faces
     !--------------------------------------------------------------------------!
+    ramp = ramp + 0.001
     allocate(un(bndry(2)%nedges)); un=0.d0
     nboundaries: do ib=1,nbndries
       boundary_edges: do i=1,bndry(ib)%nedges
@@ -110,16 +125,45 @@ contains
         ycL= cell(icL)%y
 
         !-- compute left state
-        pfL(1:nvar) = pvar(1:nvar,icL) + phi_lim(icL) * ((xf-xcL) * grad(1:nvar,icL,1) + (yf-ycL) * grad(1:nvar,icL,2))
+        !pfL(1:nvar) = pvar(1:nvar,icL) + phi_lim(icL) * ((xf-xcL) * grad(1:nvar,icL,1) + (yf-ycL) * grad(1:nvar,icL,2))
+        dum1(1:nvar) = pvar(1:nvar,icR) - pvar(1:nvar,icL)
+        dumL(1:nvar) = (xf-xcL) * grad(1:nvar,icL,1) + (yf-ycL) * grad(1:nvar,icL,2)
+        pfL(1:nvar) = pvar(1:nvar,icL) + phi_lim(icL) * ( umuscl_cst/2.d0 * dum1(1:nvar) + (1.d0-umuscl_cst)*dumL(1:nvar) )
+
 
         !-- compute right state
         call bc_flux (time,xf,yf,nxf,nyf,bndry(ib)%type,pfL, pfR)
 
-        !-- compute un
-        if (ib==2) un(i) = pfL(iu)*nxf + pfL(iv)*nyf
 
         !-- compute inviscid flux
         call compute_flux_invscid (pfL, pfR, nxf,nyf,  flux, ws_max)
+
+        if (trim(bndry(ib)%type)=='slip_wall') then
+          ! u_n = pfL(iu)*nxf + pfL(iv)*nyf
+          ! u_b = pfL(iu) - min(ramp,1.d0)*u_n*nxf
+          ! v_b = pfL(iv) - min(ramp,1.d0)*u_n*nyf
+          ! h_b = gamma/(gamma-1.d0) * pfL(ip)/pfL(ir) + 0.5d0*(u_b**2 + v_b**2)
+          ! flux(1) = pfL(ir)*u_n
+          ! flux(2) = pfL(ir)*u_n*u_b + pfL(ip)*nxf
+          ! flux(3) = pfL(ir)*u_n*v_b + pfL(ip)*nyf
+          ! flux(4) = 0.d0 !pfL(ir)*u_n*h_b
+
+          ! u_n = pvar(iu,icL)*nxf + pvar(iv,icL)*nyf
+          ! u_b = pvar(iu,icL) - min(ramp,1.d0)*u_n*nxf
+          ! v_b = pvar(iv,icL) - min(ramp,1.d0)*u_n*nyf
+          ! h_b = gamma/(gamma-1.d0) * pvar(ip,icL)/pvar(ir,icL) + 0.5d0*(u_b**2 + v_b**2)
+          ! flux(1) = pvar(ir,icL)*u_n
+          ! flux(2) = pvar(ir,icL)*u_n*u_b + pvar(ip,icL)*nxf
+          ! flux(3) = pvar(ir,icL)*u_n*v_b + pvar(ip,icL)*nyf
+          ! flux(4) = 0.d0 !pvar(ir,icL)*u_n*h_b
+
+          flux(1:nvar) = 0.d0
+          flux(2) = pfL(ip)*nxf
+          flux(3) = pfL(ip)*nyf
+
+          !-- compute un
+          un(i) = pfL(iu)*nxf + pfL(iv)*nyf
+        endif
 
         resid(1:nvar,icL) = resid(1:nvar,icL) + flux(1:nvar)*af
 
@@ -163,9 +207,6 @@ contains
         pfR(iu) = pvar_inf(iu)
         pfR(iv) = pvar_inf(iv)
         pfR(ip) = pvar_inf(ip)
-
-        !pfR(iu) = u_old + incr
-        !u_old = pfR(iu)
 
       case('slip_wall')
         pfR = pfL

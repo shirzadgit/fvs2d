@@ -260,6 +260,7 @@ contains
     pvar_vortex(iv) = v
     pvar_vortex(ip) = p
 
+
     return
   end subroutine compute_isentropic_vortex
 
@@ -273,57 +274,93 @@ contains
 
     real,intent(in) :: time
     integer         :: i,ic
-    real            :: dr,dru,drv, pv(nvar)
-    real            :: err_dr_max, err_dr_L1, err_dr_L2
+    real            :: dr,dru,drv,dre, pv(nvar), rho,ru,rv,re, err_L2, erho(ncells)
+    real            :: err_dr_max , err_dr_L1 , err_dr_L2
     real            :: err_dru_max, err_dru_L1, err_dru_L2
     real            :: err_drv_max, err_drv_L1, err_drv_L2
+    real            :: err_dre_max, err_dre_L1, err_dre_L2
 
     if (time==dt) then
       open(iunit_vortex, file='log_vortex_err.plt')
       write(iunit_vortex,'(a)') 'variables = "t", '
       write(iunit_vortex,'(a)') '"<greek>r</greek><sub>max</sub>",  "<greek>r</greek><sub>L1</sub>", "<greek>r</greek><sub>L2</sub>",'
       write(iunit_vortex,'(a)') '"<greek>r</greek>u<sub>max</sub>",  "<greek>r</greek>u<sub>L1</sub>", "<greek>r</greek>u<sub>L2</sub>",'
-      write(iunit_vortex,'(a)') '"<greek>r</greek>v<sub>max</sub>",  "<greek>r</greek>v<sub>L1</sub>", "<greek>r</greek>v<sub>L2</sub>"'
+      write(iunit_vortex,'(a)') '"<greek>r</greek>v<sub>max</sub>",  "<greek>r</greek>v<sub>L1</sub>", "<greek>r</greek>v<sub>L2</sub>",'
+      write(iunit_vortex,'(a)') '"<greek>r</greek>E<sub>max</sub>",  "<greek>r</greek>E<sub>L1</sub>", "<greek>r</greek>E<sub>L2</sub>",'
+      write(iunit_vortex,'(a)') '"Q<sub>L2</sub>"'
+
+      open(701, file='log_vortex_err_xy.plt')
+      write(701,'(a)') 'variables = "t", "x" "y"'
     endif
 
     err_dr_max = 0.d0
     err_dru_max= 0.d0
     err_drv_max= 0.d0
+    err_dre_max= 0.d0
 
     err_dr_L1 = 0.d0
     err_dru_L1= 0.d0
     err_drv_L1= 0.d0
+    err_dre_L1= 0.d0
 
     err_dr_L2 = 0.d0
     err_dru_L2= 0.d0
     err_drv_L2= 0.d0
+    err_dre_L2= 0.d0
+
+    err_L2 = 0.d0
+
+    erho = 0.d0
 
     do i=1,ncells_intr
       ic=cell_intr(i)
 
       call compute_isentropic_vortex (time,cell(ic)%x,cell(ic)%y,pv)
 
-      dr  = (cvar(ir,ic) - pv(ir))
-      dru = (cvar(iu,ic) - pv(ir)*pv(iu))
-      drv = (cvar(iv,ic) - pv(ir)*pv(iv))
+      rho = pv(ir);
+       ru = pv(ir)*pv(iu)
+       rv = pv(ir)*pv(iv)
+       re = pv(ip)/(gamma-1.d0) + 0.5d0*rho*(pv(iu)**2+pv(iv)**2)
 
-      err_dr_max = max(err_dr_max, abs(dr))
-      err_dr_L1  = err_dr_L1 + abs(dr)
+
+      dr  = abs(cvar(ir,ic) - rho)
+      dru = abs(cvar(iu,ic) - ru)
+      drv = abs(cvar(iv,ic) - rv)
+      dre = abs(cvar(4 ,ic) - re)
+      erho(ic) = dr;
+
+      err_dr_max = max(err_dr_max, dr)
+      err_dr_L1  = err_dr_L1 + dr
       err_dr_L2  = err_dr_L2 + dr*dr
 
-      err_dru_max = max(err_dru_max, abs(dru))
-      err_dru_L1  = err_dru_L1 + abs(dru)
+      err_dru_max = max(err_dru_max, dru)
+      err_dru_L1  = err_dru_L1 + dru
       err_dru_L2  = err_dru_L2 + dru*dru
 
-      err_drv_max = max(err_drv_max, abs(drv))
-      err_drv_L1  = err_drv_L1 + abs(drv)
+      err_drv_max = max(err_drv_max, drv)
+      err_drv_L1  = err_drv_L1 + drv
       err_drv_L2  = err_drv_L2 + drv*drv
+
+      err_dre_max = max(err_dre_max, dre)
+      err_dre_L1  = err_dre_L1 + dre
+      err_dre_L2  = err_dre_L2 + dre*dre
+
+      err_L2  = err_L2 + dr**2 + dru**2 + drv**2 + dre**2
     enddo
 
-    write(iunit_vortex, '(10(e16.8,1x))') time, err_dr_max,  err_dr_L1 /dble(ncells_intr), sqrt(err_dr_L2) /dble(ncells_intr), &
-                                                err_dru_max, err_dru_L1/dble(ncells_intr), sqrt(err_dru_L2)/dble(ncells_intr), &
-                                                err_drv_max, err_drv_L1/dble(ncells_intr), sqrt(err_drv_L2)/dble(ncells_intr)
+    ! write(iunit_vortex, '(14(e16.8,1x))') time, err_dr_max,  err_dr_L1 /dble(ncells_intr), sqrt(err_dr_L2) /dble(ncells_intr), &
+    !                                             err_dru_max, err_dru_L1/dble(ncells_intr), sqrt(err_dru_L2)/dble(ncells_intr), &
+    !                                             err_drv_max, err_drv_L1/dble(ncells_intr), sqrt(err_drv_L2)/dble(ncells_intr), &
+    !                                             err_dre_max, err_dre_L1/dble(ncells_intr), sqrt(err_dre_L2)/dble(ncells_intr), &
+    !                                             sqrt(err_L2)/dble(ncells_intr)
 
+    write(iunit_vortex, '(14(e16.8,1x))') time, err_dr_max,  err_dr_L1 /dble(ncells_intr), sqrt(err_dr_L2 /dble(ncells_intr)), &
+                                                err_dru_max, err_dru_L1/dble(ncells_intr), sqrt(err_dru_L2/dble(ncells_intr)), &
+                                                err_drv_max, err_drv_L1/dble(ncells_intr), sqrt(err_drv_L2/dble(ncells_intr)), &
+                                                err_dre_max, err_dre_L1/dble(ncells_intr), sqrt(err_dre_L2/dble(ncells_intr)), &
+                                                sqrt(err_L2/dble(ncells_intr))
+
+    write(701,*) time,cell(maxloc(erho))%x, cell(maxloc(erho))%y
     return
   end subroutine error_isentropic_vortex
 
