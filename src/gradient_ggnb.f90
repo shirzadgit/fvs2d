@@ -17,7 +17,7 @@ module gradient_ggnb
   type(ggnb_type),dimension(:),pointer  :: ggnb
 
   private :: setup
-  public  :: grad_ggnb_init, grad_ggnb, grad_ggnb_exp, grad_ggnb_test
+  public  :: grad_ggnb_init, grad_ggnb, grad_ggnb_exp, grad_ggnb_1var
 
 contains
 
@@ -213,7 +213,7 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grad_ggnb_test (fc,dfc)
+  subroutine grad_ggnb_1var (fc,dfc)
     implicit  none
 
     real,intent(in)   :: fc(ncells)
@@ -240,7 +240,7 @@ contains
     end do
 
     return
-  end subroutine grad_ggnb_test
+  end subroutine grad_ggnb_1var
 
 
   !============================================================================!
