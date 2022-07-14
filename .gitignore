@@ -1,5 +1,6 @@
 src/*.mod
 src/*.o
+src/obsolete/
 libs/
 run/
 utils/
