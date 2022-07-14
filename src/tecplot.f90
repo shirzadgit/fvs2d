@@ -27,7 +27,7 @@ module tecplot
   public  :: tecplot_init
   public  :: tecplot_write_grid_solution
   public  :: tecplot_write_grid
-  public  :: tecplot_write_solution
+  public  :: tecplot_write_solution, tecplot_write_solution8
 
 
 contains
@@ -240,16 +240,13 @@ contains
     FileType = 2    !-- 0=grid & solution, 1=grid, 2=solution
 
     title=trim('grid-solution')//nullchar
-    !if (lszplt) FileName=trim(trim(file_out))
-    !if (lplt)   FileName=trim(trim(file_out)//'.plt')
 
     variables=trim(varinfo)//nullchar
 
-    !SolTime = SolTime + 1.d0
     SolTime = real_time
 
     !-- Open the file and write the tecplot datafile header information
-    ierr = TECINI142('solution'//nullchar, trim(variables), trim(file_out)//nullchar, trim(ScratchDir), FileFormat, FileType, debug, VisDouble)
+    ierr = TECINI142('solution'//nullchar, trim(variables), trim(file_out)//nullchar, trim(ScratchDir), FileFormat, FileType, debug, IsDouble)
 
     !-- Create ordered zone
     ierr = TECZNE142(trim(ZoneTitle),  ZoneType,  nnodes, ncells, 0, 0,0,0,   SolTime, StrandId, unused, IsBlock,    &
@@ -273,5 +270,54 @@ contains
 
     return
   end subroutine tecplot_write_solution
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine tecplot_write_solution8 (file_out, varinfo, np, sol, real_time)
+
+    implicit none
+    integer,intent(in)          :: np
+    real(8),intent(in)			    :: real_time
+    real(8),intent(in)          :: sol(nnodes,np)
+    character(len=*),intent(in) :: file_out, varinfo
+    integer                     :: k,ip,FileFormat, FileType
+
+
+    FileFormat = 0  !-- 0=plt
+    FileType = 2    !-- 0=grid & solution, 1=grid, 2=solution
+
+    title=trim('grid-solution')//nullchar
+
+    variables=trim(varinfo)//nullchar
+
+    SolTime = real_time
+
+    !-- Open the file and write the tecplot datafile header information
+    ierr = TECINI142('solution'//nullchar, trim(variables), trim(file_out)//nullchar, trim(ScratchDir), FileFormat, FileType, debug, 1)
+
+    !-- Create ordered zone
+    ierr = TECZNE142(trim(ZoneTitle),  ZoneType,  nnodes, ncells, 0, 0,0,0,   SolTime, StrandId, unused, IsBlock,    &
+                     0,         &   ! NumFaceConnections
+                     0,         &   ! FaceNeighborMode
+                     0,         &   ! TotalNumFaceNodes
+                     0,         &   ! NumConnectedBoundaryFaces
+                     0,         &   ! TotalNumBoundaryConnections
+                     NullPtr,   &   ! PassiveVarList
+                     NullPtr,   &   ! ValueLocation
+                     NullPtr,   &   ! ShareVarFromZone
+                     0)             ! ShareConnectivityFromZone
+
+    !-- Write Solution Data
+    do ip=1,np
+      ierr = TECDATD142(nnodes,sol(1:nnodes,ip))
+    enddo
+
+    !-- Close tecplot file
+    ierr = TECEND142()
+
+    return
+  end subroutine tecplot_write_solution8
 
 end module tecplot

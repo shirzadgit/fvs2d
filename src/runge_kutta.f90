@@ -149,7 +149,7 @@ contains
       !call (error)
       !call cfl_dfl
     enddo
-    !write(*,*) 'un_max:',un_max
+    write(*,*) 'un_max:',un_max
 
     !-- deallocate
     deallocate(fcvar, cvar0)
@@ -199,6 +199,7 @@ contains
         !cput2=MPI_WTIME(); cput_uvwetc = cput_uvwetc + cput2 - cput1
       enddo
 
+      if (lvortex) call error_isentropic_vortex(tend)
       !if (lavrun) call avrun
       !call cfl_dfl
     enddo
