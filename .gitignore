@@ -1,4 +1,5 @@
-.mod
+src/*.mod
+src/*.o
 libs/
 run/
-
+utils/
