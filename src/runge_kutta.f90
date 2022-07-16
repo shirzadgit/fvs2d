@@ -149,7 +149,7 @@ contains
       !call (error)
       !call cfl_dfl
     enddo
-    write(*,*) 'un_max:',un_max
+    !write(*,*) 'un_max:',un_max
 
     !-- deallocate
     deallocate(fcvar, cvar0)
