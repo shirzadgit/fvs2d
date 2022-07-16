@@ -907,6 +907,25 @@ module grid_procs
         enddo
         close(iunit_log_grid)
       enddo
+
+      open(iunit_log_grid,file=trim('edu2d_bndry.plt'), status='unknown',IOSTAT=istat)
+      write(iunit_log_grid,*) nbndries
+      do ib=1,nbndries
+         write(iunit_log_grid,*) bndry(ib)%nedges+1
+      enddo
+      do ib=1,nbndries
+        do i=1,bndry(ib)%nedges
+          ie=bndry(ib)%edge(i)
+          ! n1=edge(ie)%n1
+          ! n2=edge(ie)%n2
+          write(iunit_log_grid,*)  edge(ie)%n1 !, node(edge(ie)%n1)%x, node(edge(ie)%n1)%y
+        enddo
+        ie=bndry(ib)%edge(1)
+        write(iunit_log_grid,*) edge(ie)%n1 !, node(edge(ie)%n1)%x, node(edge(ie)%n1)%y
+      enddo
+      close(iunit_log_grid)
+
+
     endif
 
 
