@@ -58,7 +58,7 @@ contains
     pvar_inf(ir) = rho_inf
     pvar_inf(iu) = u_inf
     pvar_inf(iv) = v_inf
-    pvar_inf(ip) = p_inf  
+    pvar_inf(ip) = p_inf
 
     return
   end subroutine data_solution_init
@@ -77,7 +77,7 @@ contains
       pvar(ir,ic) = cvar(1,ic)
       pvar(iu,ic) = cvar(2,ic)/cvar(1,ic)
       pvar(iv,ic) = cvar(3,ic)/cvar(1,ic)
-      pvar(ip,ic) = (gamma-1.d0)*( cvar(4,ic) - 0.5d0*cvar(1,ic)*(cvar(2,ic)**2 + cvar(3,ic)**2) )
+      pvar(ip,ic) = (gamma-1.d0)*( cvar(4,ic) - 0.5d0*pvar(1,ic)*(pvar(2,ic)**2 + pvar(3,ic)**2) )
     enddo
 
     return
@@ -102,6 +102,24 @@ contains
 
     return
   end subroutine pvar2cvar
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  function w2u(w) result(u)
+
+    implicit none
+    real, dimension(4), intent(in) :: w ! input
+    real, dimension(4)             :: u !output
+
+    u(1) = w(ir)
+    u(2) = w(ir)*w(iu)
+    u(3) = w(ir)*w(iv)
+    u(4) = w(ip)/(gamma-1.d0)+0.5d0*w(ir)*(w(iu)*w(iu)+w(iv)*w(iv))
+
+    return
+  end function w2u
 
 
   !============================================================================!
