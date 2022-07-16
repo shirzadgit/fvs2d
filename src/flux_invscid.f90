@@ -2,6 +2,7 @@ module flux_invscid
 
   use mainparam,  only  : nvar
   use input,      only  : lflux_inviscd_roe, gamma
+  use data_solution,  only  : w2u
 
   implicit none
 
@@ -18,6 +19,10 @@ contains
     implicit none
     real,intent(in)   :: pvarL(nvar), pvarR(nvar), nx,ny
     real,intent(out)  :: flux(nvar), ws_max
+
+    real,dimension(5) :: uL3d, uR3d, flux3d
+    real,dimension(4) :: uL,uR
+    real,dimension(3) :: njk
 
     if (lflux_inviscd_roe) then
       call flux_invscid_roe (pvarL,pvarR, nx,ny,  flux, ws_max)
