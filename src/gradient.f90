@@ -43,6 +43,8 @@ contains
     implicit  none
 
 
+    if (lface_reconst_upwind1st) return
+
     if (lgrad_ggnb) then
       call grad_ggnb
       !call grad_ggnb_exp(fc,dfc)
