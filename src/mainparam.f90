@@ -29,11 +29,15 @@ module mainparam
   character(len=15)       :: file_cp='log_cp.plt'
   integer,parameter       :: iunit_cp=904
 
+  !-- Vn file
+  character(len=15)       :: file_un='log_un.plt'
+  integer,parameter       :: iunit_un=905
+
   !-- log files
   character(len=127)      :: file_log_input='log.fvs2d'
-  integer,parameter       :: iunit_log_input=905
+  integer,parameter       :: iunit_log_input=906
 
   character(len=127)      :: file_log_grid='log.grid'
-  integer,parameter       :: iunit_log_grid=906
+  integer,parameter       :: iunit_log_grid=907
 
 end module mainparam

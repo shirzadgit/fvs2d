@@ -49,6 +49,10 @@ contains
         if (trim(bndry(ib)%type)=='slip_wall' .or. trim(bndry(ib)%type)=='solid_wall') lcp=.true.
       enddo
       if (lcp) open(iunit_cp,file=trim(file_cp))
+      if (lcp) then
+        open(iunit_un,file=trim(file_un))
+        write(iunit_un,'(a)') 'VARIABLES = "time" "|V<sub>n</sub>|<sub><math>%</math></sub>",   "|V<sub>n</sub>|<sub>2</sub>" , "|V<sub>n</sub>|<sub>1</sub>"'
+      endif
     endif
 
 
@@ -103,6 +107,10 @@ contains
 
     !-- compute and write cp
     if (lcp) call write_cp (sol_time)
+
+
+    !--
+    call write_un (sol_time)
 
     deallocate(f4,f8)
 
@@ -182,7 +190,7 @@ contains
     call gradient_cellcntr_1var(pvar(ip,1:ncells), dp)
 
     do ib=1,nbndries
-      if (trim(bndry(ib)%type)=='slip_wall' .or. trim(bndry(ib)%type)=='slip_wall') then
+      if (trim(bndry(ib)%type)=='slip_wall' .or. trim(bndry(ib)%type)=='solid_wall') then
         write(iunit_cp,'(a)') 'TITLE     = "cp"'
         write(iunit_cp,'(a)') 'VARIABLES = "x" "cp_w" "cp_cell"'
         write(iunit_cp,'(a,i0,a)') 'ZONE I=',bndry(ib)%nedges,' J=1'
@@ -209,5 +217,65 @@ contains
 
     return
   end subroutine write_cp
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine write_un (sol_time)
+    implicit none
+
+    real,intent(in) :: sol_time
+    integer         :: i,ib,ie,ic
+    real            :: xf,yf,af,nx,ny, un,uw,vw, un_max, un_l1, un_l2
+    real,allocatable:: du(:,:), dv(:,:)
+
+
+
+    !-- compute dp/dx and dp/dy
+    allocate(du(ncells,2), dv(ncells,2))
+    call gradient_cellcntr_1var(pvar(iu,1:ncells), du)
+    call gradient_cellcntr_1var(pvar(iv,1:ncells), dv)
+
+
+    do ib=1,nbndries
+      if (trim(bndry(ib)%type)=='slip_wall' .or. trim(bndry(ib)%type)=='solid_wall') then
+        ! write(iunit_cp,'(a)') 'TITLE     = "un"'
+        ! write(iunit_cp,'(a)') 'VARIABLES = "x" "u_n" "|u_n|"'
+        ! write(iunit_cp,'(a,i0,a)') 'ZONE I=',bndry(ib)%nedges,' J=1'
+        ! write(iunit_cp,'(a,e16.8)') 'STRANDID=1, SOLUTIONTIME=',sol_time
+        un_max = 0.d0
+        un_l2  = 0.d0
+        un_l1  = 0.d0
+        do i=1,bndry(ib)%nedges
+          ie = bndry(ib)%edge(i)
+          ic = bndry(ib)%cell(i)
+
+          xf = edge(ie)%x
+          yf = edge(ie)%y
+          af = edge(ie)%area
+          nx = edge(ie)%nx
+          ny = edge(ie)%ny
+
+          uw = pvar(iu,ic) + (edge(ie)%x-cell(ic)%x)*du(ic,1) + (edge(ie)%y-cell(ic)%y)*du(ic,2)
+          vw = pvar(iv,ic) + (edge(ie)%x-cell(ic)%x)*dv(ic,1) + (edge(ie)%y-cell(ic)%y)*dv(ic,2)
+
+          un = uw*nx + vw*ny
+
+          un_l2 = un_l2 + un*un
+          un_l1 = un_l1 + abs(un)
+          un_max = max(un_max,abs(un))
+        enddo
+        un_l2 = sqrt(un_l2/dble(bndry(ib)%nedges))
+        un_l1 = un_l1/dble(bndry(ib)%nedges)
+        write(iunit_un,'(4(e16.8,1x))') sol_time, un_max, un_l2, un_l1
+      endif
+    enddo
+
+
+    deallocate(du, dv)
+
+    return
+  end subroutine write_un
 
 end module io

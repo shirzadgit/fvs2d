@@ -144,7 +144,7 @@ program fvs2d
 
     !-- output the solution at check point for user
     it_tot = it_tot + nsubsteps(it)
-    write(*,'(i5,a)') it_tot,' time-steps done'
+    write(*,'(i5,a)') it_tot,' time-steps done '
 
     !-- write out output files
     call io_write_inst(t2, nsubsteps(it))
