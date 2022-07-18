@@ -33,11 +33,15 @@ module mainparam
   character(len=15)       :: file_un='log_un.plt'
   integer,parameter       :: iunit_un=905
 
+  !-- residual
+  character(len=15)       :: file_res='log_res.plt'
+  integer,parameter       :: iunit_res=906
+
   !-- log files
   character(len=127)      :: file_log_input='log.fvs2d'
-  integer,parameter       :: iunit_log_input=906
+  integer,parameter       :: iunit_log_input=907
 
   character(len=127)      :: file_log_grid='log.grid'
-  integer,parameter       :: iunit_log_grid=907
+  integer,parameter       :: iunit_log_grid=908
 
 end module mainparam
