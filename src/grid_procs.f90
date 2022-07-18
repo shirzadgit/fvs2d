@@ -720,6 +720,8 @@ module grid_procs
     cell_bndr(1:ncells_bndr) = idum2(1:ncells_bndr)
 
     if (ncells_bndr /= sum(bndry(1:nbndries)%ncells)) then
+      write(*,*) '#s of boundary cells determined:', ncells_bndr
+      write(*,*) '#s of boundary cells via .bc file:',sum(bndry(1:nbndries)%ncells)
       write(*,*) '#s of boundary cells does not match'
       write(*,*) 'error in mod: grid_procs, sub: grid_data'
       stop
@@ -781,6 +783,8 @@ module grid_procs
     enddo
 
     if (nedges_bndr /= sum(bndry(1:nbndries)%nedges)) then
+      write(*,*) '#s of boundary edges determined:', nedges_bndr
+      write(*,*) '#s of boundary edges read:',sum(bndry(1:nbndries)%nedges)
       write(*,*) '#s of boundary edges/faces does not match'
       write(*,*) 'error in mod: grid_procs, sub: grid_data'
       stop
@@ -885,7 +889,7 @@ module grid_procs
           je=cell(ic)%edge(ie)
           xc=edge(je)%nx * cell(ic)%nrmlsign(ie)
           yc=edge(je)%ny * cell(ic)%nrmlsign(ie)
-          write(iunit_log_grid,*) cell(ic)%x, cell(ic)%y, xc, yc
+          write(iunit_log_grid,'(4(e16.8,1x))') cell(ic)%x, cell(ic)%y, xc, yc
         enddo
       enddo
       close(iunit_log_grid)
@@ -908,24 +912,22 @@ module grid_procs
         close(iunit_log_grid)
       enddo
 
-      open(iunit_log_grid,file=trim('edu2d_bndry.plt'), status='unknown',IOSTAT=istat)
-      write(iunit_log_grid,*) nbndries
-      do ib=1,nbndries
-         write(iunit_log_grid,*) bndry(ib)%nedges+1
-      enddo
-      do ib=1,nbndries
-        do i=1,bndry(ib)%nedges
-          ie=bndry(ib)%edge(i)
-          ! n1=edge(ie)%n1
-          ! n2=edge(ie)%n2
-          write(iunit_log_grid,*)  edge(ie)%n1 !, node(edge(ie)%n1)%x, node(edge(ie)%n1)%y
-        enddo
-        ie=bndry(ib)%edge(1)
-        write(iunit_log_grid,*) edge(ie)%n1 !, node(edge(ie)%n1)%x, node(edge(ie)%n1)%y
-      enddo
-      close(iunit_log_grid)
-
-
+      ! open(iunit_log_grid,file=trim('2d_bndry.plt'), status='unknown',IOSTAT=istat)
+      ! write(iunit_log_grid,*) nbndries
+      ! do ib=1,nbndries
+      !    write(iunit_log_grid,*) bndry(ib)%nedges+1
+      ! enddo
+      ! do ib=1,nbndries
+      !   do i=1,bndry(ib)%nedges
+      !     ie=bndry(ib)%edge(i)
+      !     ! n1=edge(ie)%n1
+      !     ! n2=edge(ie)%n2
+      !     write(iunit_log_grid,*)  edge(ie)%n1 !, node(edge(ie)%n1)%x, node(edge(ie)%n1)%y
+      !   enddo
+      !   ie=bndry(ib)%edge(1)
+      !   write(iunit_log_grid,*) edge(ie)%n1 !, node(edge(ie)%n1)%x, node(edge(ie)%n1)%y
+      ! enddo
+      ! close(iunit_log_grid)
     endif
 
 
