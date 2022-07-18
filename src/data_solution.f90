@@ -18,6 +18,7 @@ module data_solution
   real, allocatable, dimension(:,:,:) :: grad     ! gradients of pvar at cell centers
   real, allocatable, dimension(:,:)   :: resid    ! residual vector at cell center
   real, allocatable, dimension(:)     :: phi_lim  ! limiter
+  real, allocatable, dimension(:)     :: ws_nrml  ! normal wave speed
 
 
   !-- variables locations in pvar
@@ -47,6 +48,7 @@ contains
     allocate( grad(nvar,ncells,grid_dim))
     allocate(resid(nvar,ncells))
     allocate(phi_lim(ncells))
+    allocate(ws_nrml(ncells))
 
 
     !-- set free stream values based on the input Mach number.
