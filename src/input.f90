@@ -19,6 +19,8 @@ module input
   integer,save              :: ntstart,ntimes,nsaves
   integer,allocatable,save  :: nsubsteps(:)
   real,allocatable,save     :: dtsave(:)              !-- time-step for writing out solution
+  logical,save              :: lsteady, lwrite_resid
+  real,save                 :: cfl_user
 
   !-- isentropic vortex
   logical,save      :: lvortex
@@ -90,6 +92,7 @@ contains
     read(iunit_input,*) ntimes
     read(iunit_input,*) nsaves
     read(iunit_input,*) ntstart
+    read(iunit_input,*) lsteady, cfl_user
     read(iunit_input,*) lvortex
 
     read(iunit_input,*)
@@ -108,7 +111,8 @@ contains
     close(iunit_input)
 
 
-
+    !--
+    lwrite_resid = .true.
 
     !dtsubstep = dt/dble(nsubsteps)
     allocate(dtsave(nsaves), nsubsteps(nsaves))
@@ -268,9 +272,14 @@ contains
       else
         write(iunit_log_input,'(a35,i0,a3,i0)') 'Interval to output solution files: ',int(ntimes/nsaves)+1,' & ', ntimes-(int(ntimes/nsaves)+1)*(nsaves-1)
       endif
-      write(iunit_log_input,'(a35,i0)')       'Starting time-step: ',ntstart
-      write(iunit_log_input,'(a35,e16.8)')    't_inital: ',dble(ntstart-1)*dt
-      write(iunit_log_input,'(a35,e16.8)')    't_final : ',dble(ntstart-1)*dt+dble(ntimes)*dt
+      if (lsteady) then
+        write(iunit_log_input,'(a35,a)') 'Steady flow is computed: ','local time-stepping is employed (input dt is ignored)'
+        write(iunit_log_input,'(a35,f4.2)') 'Local dt is computed based on CFL=',cfl_user
+      else
+        write(iunit_log_input,'(a35,i0)')       'Starting time-step: ',ntstart
+        write(iunit_log_input,'(a35,e16.8)')    't_inital: ',dble(ntstart-1)*dt
+        write(iunit_log_input,'(a35,e16.8)')    't_final : ',dble(ntstart-1)*dt+dble(ntimes)*dt
+      endif
 
       if (ntstart<1) then
         write(iunit_log_input,'(a)') ' primative varialbes are initialized with manufactured solution'
@@ -317,7 +326,7 @@ contains
         case ('venk')
           write(iunit_log_input,'(a38,a)') 'Gradient limiter:',' Venkatakrishnan'
         case ('barth')
-          write(iunit_log_input,'(a38,a)') 'Gradient limiter:',' Barth and Jespersen'          
+          write(iunit_log_input,'(a38,a)') 'Gradient limiter:',' Barth and Jespersen'
         case ('albada')
           write(iunit_log_input,'(a38,a)') 'Gradient limiter:',' Van Albada'
         case default

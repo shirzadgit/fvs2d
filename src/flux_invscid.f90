@@ -1,8 +1,8 @@
 module flux_invscid
 
-  use mainparam,  only  : nvar
-  use input,      only  : lflux_inviscd_roe, gamma
-  use data_solution,  only  : w2u
+  use mainparam,      only  : nvar
+  use input,          only  : lflux_inviscd_roe, gamma
+  use data_solution,  only  : prim2cnsr
 
   implicit none
 

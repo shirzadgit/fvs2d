@@ -10,19 +10,18 @@ module tecplot
   private
 
   !-- tecplot
-  integer,save                      :: debug, VIsDouble, IsDouble, ZoneType, StrandId,IsBlock, unused
+  integer,save                      :: debug, IsDouble, IsBlock, ZoneType, StrandId,  unused
   character(len=128),save           :: title, variables, FileName,ZoneTitle
   character,save                    :: ScratchDir*2
   integer,pointer                   :: NullPtr(:)
   real(8),save                      :: SolTime
-  character(len=1),parameter        :: nullchar=char(0)
+  !character(len=1),parameter        :: nullchar=char(0)
   integer                           :: ierr
   logical,save                      :: lplt,lszplt, lSZL
 
   !-- file
   integer,save                      :: nedge_max
   integer(kind=4),allocatable,save  :: cell2node(:,:)
-  !character(len=127)                :: varnames
 
   public  :: tecplot_init
   public  :: tecplot_write_grid_solution
@@ -47,16 +46,14 @@ contains
     ! ZoneTitle - The title of the zone, must be null-terminated.
 
     debug       = 0 !-- 0=no debugging, 1=debug
-    VIsDouble   = 0 !-- 0=single precision, 1=double precision
-
     ZoneType    = 0 !-- 0=ORDERED, 1=FELINESEG, 2=FETRIANGLE, 3=FEQUADRILATERAL, 4=FETETRAHEDRON, 5=FEBRICK
     StrandId    = 1 !-- 0=zone is static and not associated with a strand, >0=zone is assigned to a given strand, -1=strand id for this zone is pending
     unused      = 0 !-- ParentZone is no longer used
     IsBlock     = 1 !-- 1= data will be passed in BLOCK (i,j,k,v), 0=POINT format (v,i,j,k)
     IsDouble    = 0 !-- 0= single precision, 1=double precision
 
-    ScratchDir  = '.'//nullchar
-    ZoneTitle   = 'zone 1'//nullchar
+    ScratchDir  = '.'//char(0)
+    ZoneTitle   = 'zone 1'//char(0)
 
     !-- FETRIANGLE or FEQUADRILATERAL
     if ( ncells_quad==0 ) then
@@ -117,9 +114,9 @@ contains
     FileFormat = 0  !-- 0=plt
     FileType = 0    !-- 0=grid & solution, 1=grid, 2=solution
 
-    title1=trim('grid-solution')//nullchar
+    title1=trim('grid-solution')//char(0)
 
-    variables=trim(varinfo)//nullchar
+    variables=trim(varinfo)//char(0)
     !if (lszplt) FileName=trim(trim(file_out))
     !if (lplt)   FileName=trim(trim(file_out)//'.plt')
 
@@ -127,7 +124,7 @@ contains
     SolTime = real_time
 
     !-- Open the file and write the tecplot datafile header information
-    ierr = TECINI142(trim(title1), trim(variables), trim(file_out), trim(ScratchDir), FileFormat, FileType, debug, VisDouble)
+    ierr = TECINI142(trim(title1), trim(variables), trim(file_out), trim(ScratchDir), FileFormat, FileType, debug, isDouble)
 
     !-- Create ordered zone
     ierr = TECZNE142(trim(ZoneTitle),  ZoneType,  nnodes, ncells, 0, 0,0,0,   SolTime, StrandId, unused, IsBlock,    &
@@ -176,7 +173,7 @@ contains
     FileFormat = 0  !-- 0=plt
     FileType = 1    !-- 0=grid & solution, 1=grid, 2=solution
 
-    title=trim('grid')//nullchar
+    title=trim('grid')//char(0)
     !if (lszplt) FileName=trim(trim(file_out))
     !if (lplt)   FileName=trim(trim(file_out)//'.plt')
 
@@ -184,17 +181,17 @@ contains
 
     if (grid_dim==1) then
       clen=2
-      varG(1:clen)='x'//nullchar
+      varG(1:clen)='x'//char(0)
     elseif (grid_dim==2) then
       clen=4
-      varG(1:clen)='x y'//nullchar
+      varG(1:clen)='x y'//char(0)
     elseif (grid_dim==3) then
       clen=6
-      varG(1:clen)='x y z'//nullchar
+      varG(1:clen)='x y z'//char(0)
     endif
 
     !-- Open the file and write the tecplot datafile header information
-    ierr = TECINI142('grid'//nullchar, trim(varG(1:clen)), trim(file_out)//nullchar, '.'//nullchar, FileFormat, FileType, debug, VisDouble)
+    ierr = TECINI142('grid'//char(0), trim(varG(1:clen)), trim(file_out)//char(0), '.'//char(0), FileFormat, FileType, debug, isDouble)
 
     !-- Create ordered zone
     ierr = TECZNE142(trim(ZoneTitle),  ZoneType,  nnodes, ncells, 0, 0,0,0,   SolTimeG, StrandId, unused, IsBlock,    &
@@ -239,14 +236,14 @@ contains
     FileFormat = 0  !-- 0=plt
     FileType = 2    !-- 0=grid & solution, 1=grid, 2=solution
 
-    title=trim('grid-solution')//nullchar
+    title=trim('grid-solution')//char(0)
 
-    variables=trim(varinfo)//nullchar
+    variables=trim(varinfo)//char(0)
 
     SolTime = real_time
 
     !-- Open the file and write the tecplot datafile header information
-    ierr = TECINI142('solution'//nullchar, trim(variables), trim(file_out)//nullchar, trim(ScratchDir), FileFormat, FileType, debug, IsDouble)
+    ierr = TECINI142('solution'//char(0), trim(variables), trim(file_out)//char(0), trim(ScratchDir), FileFormat, FileType, debug, IsDouble)
 
     !-- Create ordered zone
     ierr = TECZNE142(trim(ZoneTitle),  ZoneType,  nnodes, ncells, 0, 0,0,0,   SolTime, StrandId, unused, IsBlock,    &
@@ -288,14 +285,14 @@ contains
     FileFormat = 0  !-- 0=plt
     FileType = 2    !-- 0=grid & solution, 1=grid, 2=solution
 
-    title=trim('grid-solution')//nullchar
+    title=trim('grid-solution')//char(0)
 
-    variables=trim(varinfo)//nullchar
+    variables=trim(varinfo)//char(0)
 
     SolTime = real_time
 
     !-- Open the file and write the tecplot datafile header information
-    ierr = TECINI142('solution'//nullchar, trim(variables), trim(file_out)//nullchar, trim(ScratchDir), FileFormat, FileType, debug, 1)
+    ierr = TECINI142('solution'//char(0), trim(variables), trim(file_out)//char(0), trim(ScratchDir), FileFormat, FileType, debug, 1)
 
     !-- Create ordered zone
     ierr = TECZNE142(trim(ZoneTitle),  ZoneType,  nnodes, ncells, 0, 0,0,0,   SolTime, StrandId, unused, IsBlock,    &
