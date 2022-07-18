@@ -3,7 +3,7 @@ module residual
   use mainparam,      only  : nvar
   use input
   use data_grid
-  use data_solution,  only  : pvar, cvar, resid, grad, cvar2pvar, pvar2cvar, pvar_inf, ir,iu,iv,ip
+  use data_solution,  only  : pvar, cvar, resid, grad, ws_nrml, cvar2pvar, pvar2cvar, pvar_inf, ir,iu,iv,ip
   use flux_invscid
   use gradient
   use gradient_limiter
@@ -27,15 +27,16 @@ contains
     real              :: flux(nvar), pfL(nvar),pfR(nvar), ws_max, cfl_max
     real              :: xcL,ycL, xcR,ycR, xc,yc, xf,yf, nxf,nyf, af, u_n,u_b,v_b,h_b
     real              :: gradC(nvar), gradL(nvar), gradR(nvar)
-    real,allocatable  :: ws_nrml(:), un(:)
+    real,allocatable  :: un(:)
 
-
+    !--------------------------------------------------------------------------!
+    ! initialize
+    !--------------------------------------------------------------------------!
     resid(:,:)  = 0.d0
     grad(:,:,:) = 0.d0
     phi_lim(:)  = 0.d0
+    ws_nrml(:)  = 0.d0
 
-    allocate( ws_nrml(ncells) )
-    ws_nrml = 0.d0
 
     !--------------------------------------------------------------------------!
     ! convert conservatve variables to primative variables
@@ -137,7 +138,7 @@ contains
         call compute_flux_invscid (pfL, pfR, nxf,nyf,  flux, ws_max)
 
 
-        if (trim(bndry(ib)%type)=='slip_wall123') then
+        if (trim(bndry(ib)%type)=='slip_wallnot') then
           flux(1:nvar) = 0.d0
           flux(2) = pfL(ip)*nxf
           flux(3) = pfL(ip)*nyf
@@ -150,9 +151,11 @@ contains
         ws_nrml(icL) = ws_nrml(icL) + ws_max*af
       enddo boundary_edges
     enddo nboundaries
-    !write(*,*) flux_max,flux_maxb
 
-    ! dQ/dt = -residual
+
+    !--------------------------------------------------------------------------!
+    ! dQ/dt = -residual/volume
+    !--------------------------------------------------------------------------!
     do ic=1,ncells
       resid(1:nvar,ic) = -resid(1:nvar,ic)/cell(ic)%vol
     enddo
@@ -169,6 +172,9 @@ contains
   end subroutine compute_residual
 
 
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
   subroutine bc_flux (time,x,y,nx,ny,bc_type,pfL, pfR)
     implicit none
 
@@ -180,35 +186,65 @@ contains
 
     pfR = 0.d0
 
-    select case(trim(bc_type))
-      case('freestream')
-        pfR(ir) = pvar_inf(ir)
-        pfR(iu) = pvar_inf(iu)
-        pfR(iv) = pvar_inf(iv)
-        pfR(ip) = pvar_inf(ip)
+    if (trim(bc_type)=='freestream' ) then
+      pfR(ir) = pvar_inf(ir)
+      pfR(iu) = pvar_inf(iu)
+      pfR(iv) = pvar_inf(iv)
+      pfR(ip) = pvar_inf(ip)
 
-      case('slip_wall')
-        pfR = pfL
+    elseif (trim(bc_type)=='slip_wall') then
+      pfR = pfL
+      un = pfL(iu)*nx + pfL(iv)*ny
+      pfR(iu) = pfL(iu) - slipwall_velcnst*un*nx
+      pfR(iv) = pfL(iv) - slipwall_velcnst*un*ny
 
-        un = pfL(iu)*nx + pfL(iv)*ny
-        pfR(iu) = pfL(iu) - slipwall_velcnst*un*nx
-        pfR(iv) = pfL(iv) - slipwall_velcnst*un*ny
+    elseif (trim(bc_type)=='solid_wall') then
+      write(*,*) "Boundary condition=",trim(bc_type),"  not implemented yet!"
+      stop
 
-      case('solid_wall')
+    elseif (trim(bc_type)=='dirichlet') then
+      if (lvortex) then
+        !pfR(1:nvar) = vortex_inf(1:nvar)
+        call compute_isentropic_vortex (time,x,y,pfR)
+      else
+        call mms_compute_euler2d (x,y,pfR,rhs)
+      endif
+
+    else
+      write(*,*) "Boundary condition=",trim(bc_type),"  not implemented"
+      stop
+    end if
 
 
-      case('dirichlet')
-        if (lvortex) then
-          !pfR(1:nvar) = vortex_inf(1:nvar)
-          call compute_isentropic_vortex (time,x,y,pfR)
-        else
-          call mms_compute_euler2d (x,y,pfR,rhs)
-        endif
-
-      case default
-        write(*,*) "Boundary condition=",trim(bc_type),"  not implemented."
-        stop
-    end select
+    ! select case(trim(bc_type))
+    !   case('freestream')
+    !     pfR(ir) = pvar_inf(ir)
+    !     pfR(iu) = pvar_inf(iu)
+    !     pfR(iv) = pvar_inf(iv)
+    !     pfR(ip) = pvar_inf(ip)
+    !
+    !   case('slip_wall')
+    !     pfR = pfL
+    !
+    !     un = pfL(iu)*nx + pfL(iv)*ny
+    !     pfR(iu) = pfL(iu) - slipwall_velcnst*un*nx
+    !     pfR(iv) = pfL(iv) - slipwall_velcnst*un*ny
+    !
+    !   case('solid_wall')
+    !
+    !
+    !   case('dirichlet')
+    !     if (lvortex) then
+    !       !pfR(1:nvar) = vortex_inf(1:nvar)
+    !       call compute_isentropic_vortex (time,x,y,pfR)
+    !     else
+    !       call mms_compute_euler2d (x,y,pfR,rhs)
+    !     endif
+    !
+    !   case default
+    !     write(*,*) "Boundary condition=",trim(bc_type),"  not implemented."
+    !     stop
+    ! end select
 
     return
   end subroutine bc_flux
