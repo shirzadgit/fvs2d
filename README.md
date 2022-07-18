@@ -1,5 +1,5 @@
 # Unstructured Finite Volume Compressible Flow Solver
-A two-dimensional compressible flow solver using unstructured grid finite volume schemes is under development. 
+A compressible flow solver using unstructured grid finite volume schemes is under development. 
 To compile the code:<br/>
 1- go to the main directory "fvs2d/"<br/>
 2- run "make fvs2d"<br/>
