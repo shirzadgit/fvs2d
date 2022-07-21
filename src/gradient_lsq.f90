@@ -375,15 +375,45 @@ contains
 
     grad = 0.d0
 
-    do ivar=1,nvar
-      do ic=1,ncells
-        do in=1,lsq(ic)%ncells
+!-- does not work correctly on collapse(3)
+! !$omp parallel do private(ivar, ic, in, jc) shared(grad,lsq,pvar) collapse(3) num_threads(omp_nthreads) if(lOMP)
+!     do ivar=1,nvar
+!       do ic=1,ncells
+!         do in=1,lsq(ic)%ncells
+!           jc=lsq(ic)%cell(in)
+!           grad(ivar,ic,1) = grad(ivar,ic,1) + lsq(ic)%coef(1,in)*(pvar(ivar,jc)-pvar(ivar,ic))*lsq(ic)%w(in)
+!           grad(ivar,ic,2) = grad(ivar,ic,2) + lsq(ic)%coef(2,in)*(pvar(ivar,jc)-pvar(ivar,ic))*lsq(ic)%w(in)
+!         enddo
+!       end do
+!     enddo
+! !$omp end parallel do
+
+!-- works fine without using collapse
+!$omp parallel do private(ivar, ic, in, jc) shared(grad,lsq,pvar) num_threads(omp_nthreads) if(lOMP)
+    do ic=1,ncells
+      do in=1,lsq(ic)%ncells
+        do ivar=1,nvar
           jc=lsq(ic)%cell(in)
           grad(ivar,ic,1) = grad(ivar,ic,1) + lsq(ic)%coef(1,in)*(pvar(ivar,jc)-pvar(ivar,ic))*lsq(ic)%w(in)
           grad(ivar,ic,2) = grad(ivar,ic,2) + lsq(ic)%coef(2,in)*(pvar(ivar,jc)-pvar(ivar,ic))*lsq(ic)%w(in)
         enddo
       end do
     enddo
+!$omp end parallel do
+
+
+! !-- does not work correctly on collapse(2)
+! !$omp parallel do private(ivar, ic, in, jc) shared(grad,lsq,pvar) collapse(2) num_threads(omp_nthreads) if(lOMP)
+!     do ic=1,ncells
+!       do ivar=1,nvar
+!         do in=1,lsq(ic)%ncells
+!           jc=lsq(ic)%cell(in)
+!           grad(ivar,ic,1) = grad(ivar,ic,1) + lsq(ic)%coef(1,in)*(pvar(ivar,jc)-pvar(ivar,ic))*lsq(ic)%w(in)
+!           grad(ivar,ic,2) = grad(ivar,ic,2) + lsq(ic)%coef(2,in)*(pvar(ivar,jc)-pvar(ivar,ic))*lsq(ic)%w(in)
+!         enddo
+!       end do
+!     enddo
+! !$omp end parallel do
 
     return
   end subroutine grad_lsq

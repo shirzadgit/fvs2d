@@ -881,7 +881,7 @@ module grid_procs
     !--------------------------------------------------------------------------!
     ! write out cell normals
     !--------------------------------------------------------------------------!
-    if (proc_id==0) then
+    if (proc_id==0 .and. lcheck_grid) then
       open(iunit_log_grid,file='log_grid_cell_normals.plt', status='unknown',IOSTAT=istat)
       write(iunit_log_grid,'(a)') 'VARIABLES ="x", "y", "nx", "ny"'
       do ic=1,ncells
@@ -898,7 +898,7 @@ module grid_procs
     !--------------------------------------------------------------------------!
     ! write out cell normals
     !--------------------------------------------------------------------------!
-    if (proc_id==0) then
+    if (proc_id==0 .and. lcheck_grid) then
       do ib=1,nbndries
         write(charbc,'(i1)') ib
         open(iunit_log_grid,file=trim('log_bndry'//charbc//'.plt'), status='unknown',IOSTAT=istat)

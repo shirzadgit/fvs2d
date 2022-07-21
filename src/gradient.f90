@@ -1,10 +1,12 @@
 module gradient
 
+  use mainparam
   use data_grid,  only  : ncells
   use input
   use gradient_ggcb
   use gradient_ggnb
   use gradient_lsq
+  use mpi
 
   implicit none
 
@@ -41,9 +43,12 @@ contains
   !============================================================================!
   subroutine compute_gradient_cellcntr
     implicit  none
+    real      :: cput1, cput2
 
 
     if (lface_reconst_upwind1st) return
+
+    cput1 = MPI_WTIME()
 
     if (lgrad_ggnb) then
       call grad_ggnb
@@ -56,6 +61,9 @@ contains
       call grad_lsq
 
     endif
+
+    cput2 = MPI_WTIME()
+    cput_grad = cput_grad + cput2 - cput1
 
     return
   end subroutine compute_gradient_cellcntr
