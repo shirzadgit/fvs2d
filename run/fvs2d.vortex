@@ -1,6 +1,0 @@
-5.0,5.0 --- x/y center of isentropic vortex
-1.0     --- Strength of isentropic vortex (Gamma/2/pi)
-1.0     --- freestream value: density
-0.2     --- freestream value: u-velocity
-0.0     --- freestream value: v-velocity
-1.0     --- freestream value: pressure
