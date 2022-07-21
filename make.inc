@@ -51,7 +51,9 @@ endif
 #------------------------------------------------------
 # Library
 #------------------------------------------------------
-LIBS    = -L ./../libs -ltecio -L ./../libs -lrefblas -lstdc++
+##LIBS    = -L ./../libs -ltecio -L ./../libs -lrefblas -lstdc++
+LIBS    = -L ./../libs
+
 
 #------------------------------------------------------
 # Executable directory
