@@ -9,7 +9,7 @@ module test
   use gradient
   use residual, only  : compute_residual
   use mms
-  use tecplot
+  !use tecplot
 
   implicit none
 
@@ -67,14 +67,14 @@ contains
       xy(i,2) = node(i)%y
     enddo
     file_out = trim('vortex_grid.plt')
-    call tecplot_write_grid (trim(file_out), xy)
+    !call tecplot_write_grid (trim(file_out), xy)
 
     !--
     file_out = trim('vortex_solution.plt')
     varinfo  = 'rho u v p'
     np = 4
     sol_time = 1.d0
-    call tecplot_write_solution (trim(file_out), trim(varinfo), np, f, sol_time)
+    !call tecplot_write_solution (trim(file_out), trim(varinfo), np, f, sol_time)
 
     return
   end subroutine verify_vortex
@@ -136,17 +136,17 @@ contains
     varinfo  = 'x, y, f'
     np = 1
     sol_time = 1.d0
-    call tecplot_write_grid_solution (new_file2, trim(varinfo), np, xy, sol, sol_time)
+    !call tecplot_write_grid_solution (new_file2, trim(varinfo), np, xy, sol, sol_time)
 
 
     file_out = trim('w_grid.plt')
-    call tecplot_write_grid (trim(file_out), xy)
+    !call tecplot_write_grid (trim(file_out), xy)
 
     file_out = trim('w_solution.plt')
     varinfo  = 'f'
     np = 1
     sol_time = 1.d0
-    call tecplot_write_solution (trim(file_out), trim(varinfo), np, sol, sol_time)
+    !call tecplot_write_solution (trim(file_out), trim(varinfo), np, sol, sol_time)
 
 
 
