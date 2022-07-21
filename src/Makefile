@@ -26,7 +26,7 @@ include ../make.inc
 # Source Files
 #----------------------------------------------------------------------------------------
 OBJS = fvs2d.o
-MODOBJS =	mainparam.o input.o kdtree2.o \
+MODOBJS =	mainparam.o input.o kdtree2.o ios_unstrc.o \
 					data_grid.o data_solution.o \
 					grid_procs.o \
 					interpolation.o \
@@ -35,9 +35,8 @@ MODOBJS =	mainparam.o input.o kdtree2.o \
 					flux_invscid.o \
 					residual.o \
 					runge_kutta.o \
-					initialize.o \
-					tecplot.o \
 					io.o \
+					initialize.o \
 					test.o
 
 

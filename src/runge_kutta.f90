@@ -1,7 +1,7 @@
 module runge_kutta
 
   use mainparam,      only  : nvar, iunit_res, file_res
-  use input,          only  : rk_nstages, rk_order, lSSPRK, lvortex, dt, cfl_user, lsteady, lwrite_resid
+  use input,          only  : rk_nstages, rk_order, lSSPRK, lvortex, dt, cfl_user, lsteady, lwrite_resid, ntstart
   use data_grid,      only  : ncells, cell
   use data_solution,  only  : cvar, resid, ws_nrml, ir,iu,iv,ip
   use residual,       only  : compute_residual
@@ -169,7 +169,7 @@ contains
       if (lwrite_resid) then
         allocate(diff(ncells))
         diff(1:ncells) = abs(cvar(ir,1:ncells) - cvar0(ir,1:ncells));
-        write(iunit_res,'(i0,1x,e16.8)',advance='no') icont,sqrt(sum(diff**2)/dble(ncells))
+        write(iunit_res,'(i0,1x,e16.8)',advance='no') icont+ntstart-1,sqrt(sum(diff**2)/dble(ncells))
 
         diff(1:ncells) = abs(cvar(iu,1:ncells) - cvar0(iu,1:ncells));
         write(iunit_res,'(e16.8)',advance='no')             sqrt(sum(diff**2)/dble(ncells))
@@ -232,7 +232,7 @@ contains
       if (lwrite_resid) then
         allocate(diff(ncells))
         diff(1:ncells) = abs(cvar(ir,1:ncells) - cvar0(ir,1:ncells));
-        write(iunit_res,'(i0,1x,e16.8)',advance='no') icont,sqrt(sum(diff**2)/dble(ncells))
+        write(iunit_res,'(i0,1x,e16.8)',advance='no') icont+ntstart-1,sqrt(sum(diff**2)/dble(ncells))
 
         diff(1:ncells) = abs(cvar(iu,1:ncells) - cvar0(iu,1:ncells));
         write(iunit_res,'(e16.8)',advance='no')             sqrt(sum(diff**2)/dble(ncells))
@@ -320,7 +320,7 @@ contains
       if (lwrite_resid) then
         allocate(diff(ncells))
         diff(1:ncells) = abs(cvar(ir,1:ncells) - cvar0(ir,1:ncells));
-        write(iunit_res,'(i0,1x,e16.8)',advance='no') iter, sqrt(sum(diff**2)/dble(ncells))
+        write(iunit_res,'(i0,1x,e16.8)',advance='no') icont+ntstart-1, sqrt(sum(diff**2)/dble(ncells))
 
         diff(1:ncells) = abs(cvar(iu,1:ncells) - cvar0(iu,1:ncells));
         write(iunit_res,'(e16.8)',advance='no')             sqrt(sum(diff**2)/dble(ncells))
@@ -394,7 +394,7 @@ contains
       if (lwrite_resid) then
         allocate(diff(ncells))
         diff(1:ncells) = abs(cvar(ir,1:ncells) - cvar0(ir,1:ncells));
-        write(iunit_res,'(i0,1x,e16.8)',advance='no') iter, sqrt(sum(diff**2)/dble(ncells))
+        write(iunit_res,'(i0,1x,e16.8)',advance='no') icont+ntstart-1, sqrt(sum(diff**2)/dble(ncells))
 
         diff(1:ncells) = abs(cvar(iu,1:ncells) - cvar0(iu,1:ncells));
         write(iunit_res,'(e16.8)',advance='no')             sqrt(sum(diff**2)/dble(ncells))

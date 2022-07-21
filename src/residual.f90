@@ -1,6 +1,6 @@
 module residual
 
-  use mainparam,      only  : nvar
+  use mainparam,      only  : nvar, cput_flux
   use input
   use data_grid
   use data_solution,  only  : pvar, cvar, resid, grad, ws_nrml, cvar2pvar, pvar2cvar, pvar_inf, ir,iu,iv,ip
@@ -8,6 +8,7 @@ module residual
   use gradient
   use gradient_limiter
   use mms,            only  : mms_compute_euler2d, vortex_inf, compute_isentropic_vortex
+  use mpi
 
   implicit none
 
@@ -28,6 +29,7 @@ contains
     real              :: xcL,ycL, xcR,ycR, xc,yc, xf,yf, nxf,nyf, af, u_n,u_b,v_b,h_b
     real              :: gradC(nvar), gradL(nvar), gradR(nvar)
     real,allocatable  :: un(:)
+    real              :: cput1, cput2
 
     !--------------------------------------------------------------------------!
     ! initialize
@@ -56,9 +58,11 @@ contains
     call compute_gradient_limiter
 
 
+    cput1 = MPI_WTIME()
     !--------------------------------------------------------------------------!
     ! compute left and right inviscid fluxes on interior edges
     !--------------------------------------------------------------------------!
+!$omp parallel do private(i,ie,icL,icR, xf,yf,af,nxf,nyf, xcL,ycL, xcR,ycR, gradC,gradL,gradR, pfL,pfR, flux, ws_max) shared(resid,ws_nrml) num_threads(omp_nthreads) if(lOMP)
     interior_edges: do i=1,nedges_intr
       ie = edge_intr(i)
 
@@ -80,7 +84,7 @@ contains
       ycR = cell(icR)%y
 
       !-- re-construct face-value of primative variables
-      gradC (1:nvar) = pvar(1:nvar,icR) - pvar(1:nvar,icL)
+      gradC(1:nvar) = pvar(1:nvar,icR) - pvar(1:nvar,icL)
       gradL(1:nvar) = (xf-xcL) * grad(1:nvar,icL,1) + (yf-ycL) * grad(1:nvar,icL,2)
       gradR(1:nvar) = (xf-xcR) * grad(1:nvar,icR,1) + (yf-ycR) * grad(1:nvar,icR,2)
 
@@ -97,7 +101,7 @@ contains
       ws_nrml(icR) = ws_nrml(icR) + ws_max*af
 
     enddo interior_edges
-
+!$omp end parallel do
 
 
     !--------------------------------------------------------------------------!
@@ -151,7 +155,8 @@ contains
         ws_nrml(icL) = ws_nrml(icL) + ws_max*af
       enddo boundary_edges
     enddo nboundaries
-
+    cput2 = MPI_WTIME()
+    cput_flux = cput_flux + cput2 - cput1
 
     !--------------------------------------------------------------------------!
     ! dQ/dt = -residual/volume

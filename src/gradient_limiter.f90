@@ -1,10 +1,11 @@
 module gradient_limiter
 
-  use mainparam,      only  : nvar
+  use mainparam,      only  : nvar, cput_lim
   use input,          only  : lgrad_limiter, limiter_type, lface_reconst_upwind1st
   use data_solution,  only  : grad, phi_lim, pvar
   use data_grid
   use gradient_lsq
+  use mpi
 
   implicit none
 
@@ -18,9 +19,9 @@ contains
   subroutine compute_gradient_limiter
 
     implicit none
-    integer       :: i,j, ie,je, ic,jc, ivar
-    real          :: pmin,pmax, dmax,dmin, diff, phi_edge(4)
-    real          :: xc,yc, xf,yf, pf
+    integer           :: i,j, ie,je, ic,jc, ivar
+    real              :: pmin,pmax, dmax,dmin, diff, phi_edge(4)
+    real              :: xc,yc, xf,yf, pf, cput1, cput2
     real,allocatable  :: phi(:,:)
 
     !--------------------------------------------------------------------------!
@@ -31,12 +32,13 @@ contains
       return
     endif
 
-
     !-- If no limiter
     if (.not.lgrad_limiter) then
       phi_lim = 1.d0
       return
     endif
+
+    cput1 = MPI_WTIME()
 
     !--------------------------------------------------------------------------!
     ! setup
@@ -87,6 +89,9 @@ contains
     do ic=1,ncells
       phi_lim(ic) = minval(phi(1:nvar,ic))
     enddo
+
+    cput2 = MPI_WTIME()
+    cput_lim = cput_lim + cput2 - cput1
 
     return
   end subroutine compute_gradient_limiter

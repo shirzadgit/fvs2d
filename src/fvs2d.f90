@@ -11,10 +11,9 @@ program fvs2d
   use residual
   use mms
   use initialize
-  use tecplot
+  !use tecplot
   use io
   use test
-
   use mpi
   use omp_lib
 
@@ -53,6 +52,9 @@ program fvs2d
   omp_nthreads=omp_get_num_threads()
 !$omp end parallel
   if (omp_nthreads>1) lOMP=.true.
+  write(*,*) '------------------------------------------------------------------'
+  write(*,'(a,i0)') ' #s omp threads = ',omp_nthreads
+  write(*,'(a,L1)') '  omp activated = ',lOMP
 
 
   !----------------------------------------------------------------------------!
@@ -104,16 +106,17 @@ program fvs2d
 
 
   !----------------------------------------------------------------------------!
+  ! open ios files
+  !----------------------------------------------------------------------------!
+  !call tecplot_init
+  call io_setup
+  call io_init
+
+
+  !----------------------------------------------------------------------------!
   ! initialize flow
   !----------------------------------------------------------------------------!
   call initialize_solution
-
-
-  !----------------------------------------------------------------------------!
-  ! open ios files
-  !----------------------------------------------------------------------------!
-  !call io_init
-  call tecplot_init
 
 
   !----------------------------------------------------------------------------!
@@ -147,23 +150,42 @@ program fvs2d
     write(*,'(i5,a)') it_tot,' time-steps done '
 
     !-- write out output files
-    call io_write_inst(t2, nsubsteps(it))
+    !call write_inst_tec(t2, nsubsteps(it))
+    call write_inst_ios (t2, nsubsteps(it))
+
+    !-- write out cp and Vn
+    call write_inst_cp_un (t2)
 
     t0 = t2;
   enddo
+  cput2 = MPI_WTIME()
+  cputot= cput2 - cput1
 
 
   !----------------------------------------------------------------------------!
-  ! end
+  ! write last time step
   !----------------------------------------------------------------------------!
-  call io_write_save(t2)
+  !call write_save_tec(t2)
+  call write_save_ios
+
+
+  !----------------------------------------------------------------------------!
+  ! write out cpu times
+  !----------------------------------------------------------------------------!
+  write(*,*) '------------------------------------------------------------------'
+  if (cputot<999.d0*60.d0) then
+      write(*,'(4(a,f7.3))') ' cpu-time(min): total=',cputot/min, ', grad=',cput_grad/min,', flux=',cput_flux/min,', limiter=',cput_lim/min
+  else
+      write(*,'(4(a,f7.3))') ' cpu-time(hr): total=' ,cputot/hr , ', grad=',cput_grad/hr, ', flux=',cput_flux/hr, ', limiter=',cput_lim/hr
+  endif
+  write(*,*)
 
 
   !----------------------------------------------------------------------------!
   ! end
   !----------------------------------------------------------------------------!
   call MPI_FINALIZE(ierr)
-  stop 'o.k.'
+  stop ' o.k.'
 
 
 end program fvs2d

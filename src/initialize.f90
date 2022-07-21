@@ -1,9 +1,11 @@
 module initialize
 
   use input,        only  : ntstart, dt, lvortex
-  use data_grid,    only  : ncells, cell, bndry, nbndries
+  use data_grid,    only  : nnodes, ncells, cell, bndry, nbndries
   use data_solution
   use mms,          only  : mms_sol, compute_isentropic_vortex
+  use ios_unstrc
+  use io,           only  : imach_cont, itape_cont, iunit_cont, fbase_cont
 
   implicit none
 
@@ -17,8 +19,11 @@ contains
   subroutine initialize_solution
 
     implicit none
-    integer     :: ic, ib, i
-    real        :: t_initial, pvar_vortex(nvar)
+    integer               :: ic, ib, i, ivar
+    real                  :: t_initial, pvar_vortex(nvar)
+    integer               :: nnodes_r, ncells_r, nt_r, np_r, minf_r, ierr
+    integer               :: itimes_r(maxtime)
+    character(len=maxlen) :: inf_r(maxinf)
 
 
     t_initial = dble(ntstart-1)*dt
@@ -37,15 +42,6 @@ contains
         pvar(ip,ic) =   p_inf
       enddo cell_loop1
 
-      ! do ib=1,nbndries
-      !   if (trim(bndry(ib)%type) == 'slip_wall') then
-      !     do i=1,bndry(ib)%ncells
-      !       ic=bndry(ib)%cell(i)
-      !       pvar(iu,ic) =   u_inf*0.7
-      !     enddo
-      !   endif
-      ! enddo
-
       !-- initialize with isentropic vortex
       if (lvortex) then
         cell_loop2 : do ic = 1, ncells
@@ -60,6 +56,26 @@ contains
     elseif (ntstart > 1) then
       !-- read continuation files
 
+      !-- read control data file
+      call readcd (itape_cont, iunit_cont, fbase_cont, imach_cont, &
+                   nt_r, ncells_r, nnodes_r, np_r, itimes_r, inf_r, minf_r, ierr)
+
+      !-- check dimension
+      if (ncells_r /= ncells .or. nnodes_r /= nnodes) then
+        write(*,*) 'dimension between grid and cont files does not match!'
+        write(*,*) 'error in mod:initialize, sub: initialize_solution'
+        stop 'error'
+      elseif (nt_r>1 .or. np_r/=nvar)  then
+        write(*,*) 'nt>1 or #s parameters/=nvar!'
+        write(*,*) 'error in mod:initialize, sub: initialize_solution'
+        stop 'error'
+      endif
+
+      !-- read conservatve variables
+      do ivar=1,nvar
+        call readd(itape_cont, cvar(ivar,1:ncells), 1, ivar, ierr)
+      enddo
+
     elseif (ntstart < 1) then
       !-- initialize with manufactured solution
       pvar = mms_sol
@@ -68,7 +84,7 @@ contains
 
 
     !-- compute conservative variables.
-    call pvar2cvar
+    if (ntstart<=1) call pvar2cvar
 
     return
   end subroutine initialize_solution

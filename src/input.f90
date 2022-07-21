@@ -6,13 +6,13 @@ module input
   implicit none
 
   !-- Grid paramteres
-  character,save    :: file_grid*127, file_bc*127
+  character,save            :: file_grid*127, file_bc*127
 
   !-- Flow paramteres
-  real,save         :: rey        !-- Reynolds number
-  real,save         :: mach_inf   !-- Mach number
-  real,save         :: gamma
-  real,save         :: aoa_inf_deg!-- free-stream angle of attack (deg)
+  real,save                 :: rey        !-- Reynolds number
+  real,save                 :: mach_inf   !-- Mach number
+  real,save                 :: gamma
+  real,save                 :: aoa_inf_deg!-- free-stream angle of attack (deg)
 
   !-- time integration parameters
   real,save                 :: dt                     !-- time-integration time-step
@@ -23,33 +23,38 @@ module input
   real,save                 :: cfl_user
 
   !-- isentropic vortex
-  logical,save      :: lvortex
-
+  logical,save              :: lvortex
 
   !-- Runge-Kutta time integration
-  integer,save      :: rk_nstages !-- #s Runge-Kutta stages
-  integer,save      :: rk_order   !-- order of accuracy of R-K
-  logical,save      :: lSSPRK     !-- Strong stability preserving R-K
+  integer,save              :: rk_nstages !-- #s Runge-Kutta stages
+  integer,save              :: rk_order   !-- order of accuracy of R-K
+  logical,save              :: lSSPRK     !-- Strong stability preserving R-K
 
   !-- input parameters for gradient
-  integer,save      :: grad_cellcntr_imethd
-  logical,save      :: lgrad_ggcb, lgrad_ggnb, lgrad_ggnb_exp, lgrad_lsq
-  logical,save      :: lgrad_lsq_fn, lgrad_lsq_nn
-  real,save         :: grad_cellcntr_lsq_pow
+  integer,save              :: grad_cellcntr_imethd
+  logical,save              :: lgrad_ggcb, lgrad_ggnb, lgrad_ggnb_exp, lgrad_lsq
+  logical,save              :: lgrad_lsq_fn, lgrad_lsq_nn
+  real,save                 :: grad_cellcntr_lsq_pow
 
   !-- gradient limiter scheme
-  integer,save      :: grad_limiter_imethd
-  logical,save      :: lgrad_limiter
-  character,save    :: limiter_type*20
+  integer,save              :: grad_limiter_imethd
+  logical,save              :: lgrad_limiter
+  character,save            :: limiter_type*20
 
   !-- face re-construction scheme
-  integer,save      :: face_reconst_imethd
-  logical,save      :: lface_reconst_upwind1st, lface_reconst_upwind2nd, lface_reconst_umuscl
-  real,save         :: umuscl_cst
+  integer,save              :: face_reconst_imethd
+  logical,save              :: lface_reconst_upwind1st, lface_reconst_upwind2nd, lface_reconst_umuscl
+  real,save                 :: umuscl_cst
 
   !-- inviscid flux discretization scheme
-  integer,save      :: flux_inviscd_imethd
-  logical,save      :: lflux_inviscd_roe
+  integer,save              :: flux_inviscd_imethd
+  logical,save              :: lflux_inviscd_roe
+
+
+  !-- instantenous output files
+  integer,save              :: imach_inst
+  logical,save              :: lw_rho, lw_u, lw_v, lw_p, lw_inst_atall
+
 
 contains
 
@@ -60,8 +65,8 @@ contains
     implicit none
 
     integer         :: istat,ierr,iloc,jloc,i
-    logical         :: linputfile
-    character       :: message*124, dchar_grid*120, grad_cellcntr_lsq_nghbr*2
+    logical         :: linputfile, lw_check
+    character       :: message*124, dchar_grid*120, grad_cellcntr_lsq_nghbr*2, cmach_inst*2
 
 
     !--------------------------------------------------------------------------!
@@ -96,6 +101,10 @@ contains
     read(iunit_input,*) lvortex
 
     read(iunit_input,*)
+    read(iunit_input,*) lw_rho, lw_u, lw_v, lw_p
+    read(iunit_input,*) cmach_inst
+
+    read(iunit_input,*)
     read(iunit_input,*)
     read(iunit_input,*)
     read(iunit_input,*) grad_cellcntr_imethd, grad_cellcntr_lsq_nghbr, grad_cellcntr_lsq_pow;
@@ -127,7 +136,29 @@ contains
     endif
 
 
+    !-- task:
     if (ntstart==0) lvortex=.false.
+
+
+    !--------------------------------------------------------------------------!
+    ! Transient output files
+    !--------------------------------------------------------------------------!
+    if (lw_rho .or. lw_u .or. lw_v .or. lw_p) lw_inst_atall = .true.
+
+    if (cmach_inst=='s4' .or. cmach_inst=='S4') then
+      imach_inst=1
+    elseif (cmach_inst=='s8' .or. cmach_inst=='S8') then
+      imach_inst=2
+    else
+      if (proc_id==0) then
+        write(*,*)
+        write(*,*) 'format for regular output files in physical space:',cmach_inst
+        write(*,*) 'format for regular output files must be either s4 or s8'
+        write(*,*) 'error in --> mod:input, sr:input_read'
+        stop 'error'
+      endif
+    endif
+
 
     !--------------------------------------------------------------------------!
     ! Grid and BC file names
@@ -298,6 +329,14 @@ contains
         endif
       endif
 
+      write(iunit_log_input,'(a)') '-------------------------------------------------------------------------------------------------------------------------------------------'
+      if (lw_inst_atall .and. imach_inst==1) write(iunit_log_input,'(a52)') ' Write out following variables in single precision:'
+      if (lw_inst_atall .and. imach_inst==2) write(iunit_log_input,'(a52)') ' Write out following variables in double precision:'
+      if (lw_rho) write(iunit_log_input,'(a52)') ' density'
+      if (lw_u  ) write(iunit_log_input,'(a52)') ' u-velocity'
+      if (lw_v  ) write(iunit_log_input,'(a52)') ' v-velcoity'
+      if (lw_p  ) write(iunit_log_input,'(a52)') ' pressure'
+
       write(iunit_log_input,'(a)') ' '
       write(iunit_log_input,'(a)') '==========================================================================================================================================='
       write(iunit_log_input,'(a)') '     Temporal & Spatial Discretization Schemes      '
@@ -358,6 +397,12 @@ contains
       endif
       write(iunit_log_input,'(a52,i0)') '#s of stages for Runge-Kutta time-integration: ',rk_nstages
       write(iunit_log_input,'(a52,i0)') 'Order of accuracy of Runge-Kutta time-integration: ',rk_order
+
+
+      write(iunit_log_input,'(a)') '-------------------------------------------------------------------------------------------------------------------------------------------'
+      write(iunit_log_input,'(a)') ' Transient output files         '
+
+
 
 
       close(iunit_log_input)
