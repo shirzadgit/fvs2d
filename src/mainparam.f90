@@ -11,6 +11,12 @@ module mainparam
   integer,save            :: omp_nthreads
   logical,save            :: lOMP
 
+  !-- cput time
+  real,save               :: cput_grad=0.d0, cput_lim=0.d0, cput_flux=0.d0
+
+  !--
+  logical,parameter       :: lcheck_grid=.false.
+
   !-- input file
   character(len=127)      :: file_input='fvs2d.input'
   integer,parameter       :: iunit_input=900
@@ -33,15 +39,19 @@ module mainparam
   character(len=15)       :: file_un='log_un.plt'
   integer,parameter       :: iunit_un=905
 
+  !-- cl/cd file
+  character(len=15)       :: file_clcd='log_clcd.plt'
+  integer,parameter       :: iunit_clcd=906
+
   !-- residual
   character(len=15)       :: file_res='log_res.plt'
-  integer,parameter       :: iunit_res=906
+  integer,parameter       :: iunit_res=907
 
   !-- log files
   character(len=127)      :: file_log_input='log.fvs2d'
-  integer,parameter       :: iunit_log_input=907
+  integer,parameter       :: iunit_log_input=908
 
   character(len=127)      :: file_log_grid='log.grid'
-  integer,parameter       :: iunit_log_grid=908
+  integer,parameter       :: iunit_log_grid=909
 
 end module mainparam
