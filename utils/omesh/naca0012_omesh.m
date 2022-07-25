@@ -7,8 +7,8 @@ clc
 %-- ny: number of grid points in normal direction
 %-- thick: NACA symmetric thickness (%)
 
-nx=65;
-ny=65;
+nx=257;
+ny=257
 thick=0.12;
 
 if (mod(nx,2)==0)
@@ -131,7 +131,7 @@ hold off;
 
 set(gca,'Visible','off');
 fout=['naca0012_omesh'];
-print(gcf,fout,'-dpng','-r800');     
+% print(gcf,fout,'-dpng','-r800');     
 
 nx1=nx-1;
 %% write grid file for fvs2d
