@@ -1,10 +1,20 @@
 module interpolation
 
+  use data_grid
   use grid_procs
 
   implicit none
 
-  real,allocatable,dimension(:),save  :: interp_nodeweight, interp_cellweight
+  private
+
+  type intrp_type
+     real,dimension(:),pointer     :: idw
+  end type intrp_type
+
+  type(intrp_type),dimension(:),pointer :: intrp
+
+  private :: cell2node_idw_setup
+  public  :: interpolate_init, interpolate_cell2node
 
 contains
 
@@ -17,15 +27,21 @@ contains
 
 
     !--------------------------------------------------------------------------!
-    ! setup interpolation opertor for cell centers to cell nodes interpolation
+    ! allocate
     !--------------------------------------------------------------------------!
-    call interpolate_cellcntr2node_setup
+    allocate(intrp(nnodes))
 
 
     !--------------------------------------------------------------------------!
-    ! check interpolation
+    ! setup interpolation stencil based on linear inverse distance
     !--------------------------------------------------------------------------!
-    !call interpolate_check
+    call cell2node_idw_setup
+
+
+    !--------------------------------------------------------------------------!
+    ! setup interpolation stencil based on least-squares
+    !--------------------------------------------------------------------------!
+    !call cell2node_lsq_setup
 
 
     return
@@ -33,69 +49,77 @@ contains
 
 
   !============================================================================!
-  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  ! Interpolate cell center values (fc) to cell vertices (fv)
+  ! scheme: linear inverse distance weighting
+  !         _______
+  !        \
+  !         \
+  ! fv(i) =  .      node(i)%intrp_idw(ic)*fc(ic)
+  !         /
+  !        /_______
+  !          ic=nb
   !============================================================================!
-  subroutine interpolate_cellcntr2node_setup
+  subroutine cell2node_idw_setup
     implicit  none
 
-    integer   :: i,in,ic,iv,nt
-    real      :: d,dt
+    integer           :: i,in,ic
+    real              :: idt, xc,yc, xv,yv, dx,dy
+    real,allocatable  :: d(:)
 
-    nt=size(node2cell,dim=1)
-    allocate(interp_nodeweight(num_nodes), interp_cellweight(nt))
 
-    !--------------------------------------------------------------------------!
-    ! Interpolate cell center values (fc) to nodes (fv) 
-    !                              _______
-    !                             \
-    !                              \
-    ! fv(i) = interp_nodeweight(i)  .       interp_cellweight(ic)*fc(ic)
-    !                               /
-    !                              /_______
-    !                                 ic=nb
-    !--------------------------------------------------------------------------!
-    do in=1,num_nodes
-      dt=0.d0
-      do i=node2cell_ptr(in), node2cell_ptr(in) + node2cell_ntot(in) - 1
-        ic=node2cell(i)
-        do iv=1,num_vert_cell(ic)
-          if (in==cell2node(ic,iv)) then
-            d=cell_dist2vert(ic,iv)
-            dt=dt+1.d0/d
-            interp_cellweight(i)=1.0/d
-          endif
-        enddo
+    node_loop: do in=1,nnodes
+
+      allocate(intrp(in)%idw(node(in)%ncells), d(node(in)%ncells))
+
+      xv=node(in)%x
+      yv=node(in)%y
+
+      idt=0.d0
+      do i=1,node(in)%ncells
+        ic=node(in)%cell(i)
+
+        xc=cell(ic)%x
+        yc=cell(ic)%y
+
+        dx=xc-xv
+        dy=yc-yv
+        d(i)=dsqrt(dx**2 +dy**2)
+
+        idt=idt + 1.d0/d(i)
       enddo
-      interp_nodeweight(in)=1.d0/dt;
-    enddo
+
+      do i=1,node(in)%ncells
+        intrp(in)%idw(i)=1.d0/d(i)/idt
+      enddo
+
+      deallocate(d)
+    enddo node_loop
 
 
     return
-  end subroutine interpolate_cellcntr2node_setup
+  end subroutine cell2node_idw_setup
 
 
 
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine interpolate_cellcntr2node (fc,fv)
+  subroutine interpolate_cell2node (fc,fv)
     implicit  none
 
-    real,intent(in)   :: fc(num_cells)
-    real,intent(out)  :: fv(num_nodes)
-    !character(len=*)  :: interp_type
+    real,intent(in)   :: fc(ncells)
+    real,intent(out)  :: fv(nnodes)
     integer           :: in,ic,i
 
     fv(:)=0.d0
-    do in=1,num_nodes
-      do i=node2cell_ptr(in), node2cell_ptr(in) + node2cell_ntot(in) - 1
-        ic=node2cell(i)
-        fv(in) = fv(in) + interp_cellweight(i)*fc(ic)
+    do in=1,nnodes
+      do i=1,node(in)%ncells
+        ic=node(in)%cell(i)
+        fv(in) = fv(in) + intrp(in)%idw(i)*fc(ic)
       enddo
-      fv(in) = interp_nodeweight(in)*fv(in)
     enddo
 
     return
-  end subroutine interpolate_cellcntr2node
+  end subroutine interpolate_cell2node
 
 end module interpolation

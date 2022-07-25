@@ -1,29 +1,32 @@
 module grid_procs
 
-  use mainparam, only : iunit_grid
-  use input, only     : file_grid
-  use grid_graph
+  use mainparam
+  use input,      only  : file_grid, file_bc
+  use data_grid
   use kdtree2_module
 
   implicit none
 
-  integer,parameter                       :: num_vert_max=3
-  integer,save                            :: num_cells, num_nodes, num_edges, num_edges_bndry, num_cells_bndry, num_nodes_bndry
-  real,allocatable,dimension(:,:),save    :: cell_vert, cell_center, cell_dist2vert, cell_dist2edgecenter
-  real,allocatable,dimension(:,:),save    :: edge_center, edge_normal, edge_tangnt, edge_normal_sign
-  real,allocatable,dimension(:),save      :: edge_area, cell_area
-  integer,allocatable,dimension(:,:),save :: cell2cell, cell2edge, edge2cell, edge2node, cell2node, edgemap
-  integer,allocatable,dimension(:),save   :: num_edge_cell, num_vert_edge, num_vert_cell
-  !integer,allocatable,dimension(:),save   :: node2nodeptr, node2node, node2edge, node2cell, node2cellptr
-  integer,allocatable,dimension(:),save   :: node2cell_ntot, node2cell_ptr, node2cell
-  integer,allocatable,dimension(:),save   :: cells_bndry_ptr, edges_bndry_ptr, nodes_bndry_ptr
   type(kdtree2), pointer,save             :: tree_cellcntr, tree_cellvert
 
-contains
+  contains
 
 
   !============================================================================!
-  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !--cell data:
+  !  cell(1:ncells)%nvrt    = Number of nodes/vertices of each cell
+  !  cell(1:ncells)%node(:) = Pointer to nodes of each cell
+  !  cell(1:ncells)%x/y     = cell center x/y-coordinate
+  !
+  !--node data:
+  !  node(1:nnodes)%x     = x-coordinate of the nodes
+  !  node(1:nnodes)%y     = y-coordinate of the nodes
+  !  node(1:nnodes)%intrp_idw(:)  = intrp coeff based on inverse distance
+  !
+  !--edge data:
+  !  edge(1:nedges)%n1/n2 = edge two end nodes
+  !  edge(1:nedges)%c1/c2 = edge left and right cells
+  !  edge(1:nedges)%x/y   = edge center x/y-coordinate
   !============================================================================!
   subroutine grid_procs_init
     implicit none
@@ -35,21 +38,21 @@ contains
 
 
     !--------------------------------------------------------------------------!
-    ! prepare grid links
+    ! read grid file
     !--------------------------------------------------------------------------!
-    call grid_links
+    call grid_bc_read
 
 
     !--------------------------------------------------------------------------!
-    ! compute grid properties (erea, normal, etc.)
+    ! construct grid links and data
     !--------------------------------------------------------------------------!
-    call grid_props
+    call grid_data
 
 
     !--------------------------------------------------------------------------!
-    ! check grid and computed properties
+    ! construct grid links and data
     !--------------------------------------------------------------------------!
-    !call grid_check
+    call grid_data_verify
 
 
     return
@@ -60,70 +63,54 @@ contains
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
   subroutine grid_read
+
     implicit none
-
-    integer             :: i,istat,nloc1,nloc2,eloc1,eloc2
-    real,allocatable    :: rwrk2d(:,:)
-    character           :: dchar*400
+    integer   :: i,ii,istat
+    logical   :: linputfile
 
     !--------------------------------------------------------------------------!
-    ! open grid file
+    ! check grid file
     !--------------------------------------------------------------------------!
+    inquire(file=trim(file_grid),exist=linputfile);
+    if (.not.linputfile) then
+      write(*,*)
+      write(*,*) 'linputfile:',linputfile
+      write(*,'(a,a,a)') 'cannot find ',trim(file_grid),' file!'
+      write(*,*) 'error in --> mod:grid_procs, sub:grid_read'
+      stop 'program stopped at "grid_read"'
+    endif
+
+    !-- open grid file and skip the first line
     open (iunit_grid,file=trim(file_grid),status='unknown',IOSTAT=istat)
     read (iunit_grid,*)
-    read (iunit_grid,*)
-    read (iunit_grid,'(a)') dchar
+    read (iunit_grid,*) nnodes, ncells_tri, ncells_quad
 
+    !--  allocate node and cell arrays.
+    ncells = ncells_tri + ncells_quad
+    allocate(node(nnodes))
+    allocate(cell(ncells))
 
-    !--------------------------------------------------------------------------!
-    ! determine number of nodes and cells
-    !--------------------------------------------------------------------------!
-    do i=1,len(dchar)-2
-      if (dchar(i:i+1)=='N=' .or. dchar(i:i+1)=='n=')		nloc1=i+2
-      if (dchar(i:i+1)=='E=' .or. dchar(i:i+1)=='e=')		nloc2=i-1
-      if (dchar(i:i+1)=='E=' .or. dchar(i:i+1)=='e=')		eloc1=i+2
-      if (dchar(i:i+2)=='ET=' .or. dchar(i:i+2)=='et=')	eloc2=i-1
-    enddo
-    read (dchar(nloc1:nloc2),*,iostat=istat) num_nodes
-    read (dchar(eloc1:eloc2),*,iostat=istat) num_cells
-
-
-    !--------------------------------------------------------------------------!
-    ! allocate and read nodes/vertices coordinates
-    !--------------------------------------------------------------------------!
-    allocate(cell_vert(num_nodes,2))
-    do i=1,num_nodes
-      read (iunit_grid,*) cell_vert(i,1),cell_vert(i,2)
+    !-- read node/vertices coordinates
+    do i=1,nnodes
+      read (iunit_grid,*) node(i)%x, node(i)%y
     enddo
 
-
-    !--------------------------------------------------------------------------!
-    ! allocate and read cell connectivity
-    !--------------------------------------------------------------------------!
-    allocate(cell2node(num_cells,num_vert_max))
-    do i=1,num_cells
-      read (iunit_grid,*) cell2node(i,1),cell2node(i,2),cell2node(i,3)
+    !-- read triangle cells
+    do i=1,ncells_tri
+      cell(i)%nvrt = 3
+      allocate(cell(i)%node(3))
+      read (iunit_grid,*) cell(i)%node(1), cell(i)%node(2), cell(i)%node(3)
     enddo
 
-
-    !--------------------------------------------------------------------------!
-    ! allocate and read number of edges/vertices per cell
-    !--------------------------------------------------------------------------!
-    allocate(num_vert_cell(num_cells))
-    num_vert_cell(:)=num_vert_max
-
-
-    !--------------------------------------------------------------------------!
-    ! initialize k-d tree based on cell nodes/vertices
-    !--------------------------------------------------------------------------!
-    allocate(rwrk2d(2,num_nodes))
-    do i=1,num_nodes
-      rwrk2d(1:2,i)=cell_vert(i,1:2)
+    !-- read quad cells
+    do i=1,ncells_quad
+      ii = i + ncells_tri
+      cell(ii)%nvrt = 4
+      allocate(cell(ii)%node(4))
+      read (iunit_grid,*) cell(ii)%node(1), cell(ii)%node(2), cell(ii)%node(3), cell(ii)%node(4)
     enddo
-    tree_cellvert => kdtree2_create(rwrk2d,sort=.true.,rearrange=.true.)
-    deallocate(rwrk2d)
 
-
+    !-- close grid file
     close(iunit_grid)
 
     return
@@ -133,370 +120,818 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grid_links
+  subroutine grid_bc_read
+
     implicit none
+    integer   :: i,ib,istat
+    logical   :: linputfile
 
-    integer               :: ndim,i,j
-    integer,allocatable   :: iwrk1d(:),iwrk2d(:,:)
-    integer,allocatable   :: cell2cell_tmp(:,:), cell2edge_tmp(:,:), cell2node_tmp(:,:)
 
     !--------------------------------------------------------------------------!
-    ! allocation
+    ! check grid file
     !--------------------------------------------------------------------------!
-    allocate(cell2cell(num_cells,num_vert_max), cell2edge(num_cells,num_vert_max))
-
-    !--------------------------------------------------------------------------!
-    ! find links for edge2node & edge2cell
-    !--------------------------------------------------------------------------!
-    allocate(cell2node_tmp(num_vert_max,num_cells))
-    do i=1,num_cells
-      cell2node_tmp(1:num_vert_max,i) = cell2node(i,1:num_vert_max)
-    end do
-
-    num_edges=0
-    allocate(iwrk2d(6,4*num_cells))
-    call findEdges(num_vert_max,num_cells,num_edges,cell2node_tmp,iwrk2d)
-
-    allocate(edgemap(6,num_edges),edge2node(num_edges,2),edge2cell(num_edges,2));
-    edgemap(1:6,1:num_edges)=iwrk2d(1:6,1:num_edges)
-
-    do i=1,num_edges
-      edge2node(i,1:2)=edgemap(1:2,i)
-      edge2cell(i,1:2)=edgemap(3:4,i)
-    end do
-
-    !--------------------------------------------------------------------------!
-    ! find links for cell2cell and cell2edge
-    !--------------------------------------------------------------------------!
-    allocate(cell2cell_tmp(num_vert_max,num_cells))
-    allocate(cell2edge_tmp(num_vert_max,num_cells))
-
-    call findcell2edgemap(edgemap,cell2cell_tmp,cell2edge_tmp,num_vert_max,num_edges,num_cells)
-
-    do i=1,num_cells
-      cell2cell(i,1:num_vert_max)=cell2cell_tmp(1:num_vert_max,i)
-      cell2edge(i,1:num_vert_max)=cell2edge_tmp(1:num_vert_max,i)
-    end do
+    inquire(file=trim(file_bc),exist=linputfile);
+    if (.not.linputfile) then
+      write(*,*)
+      write(*,*) 'linputfile:',linputfile
+      write(*,'(a,a,a)') 'cannot find ',trim(file_bc),' file!'
+      write(*,*) 'error in --> mod:grid_procs, sub:grid_bc_read'
+      stop 'program stopped at "grid_bc_read"'
+    endif
 
 
-    !-------------------------------------------------------------------------------
-    !
-    !-------------------------------------------------------------------------------
-    !allocate(node2nodeptr(num_nodes+1))
-    !allocate(node2node(2*num_edges))
-    !allocate(node2edge(2*num_edges))
-    !call findnodemap(edgemap,lnode2node,lnode2edge,lnode2nodeptr,nnodes,nedges)
+    !-- open bc file and skip the first line
+    open (iunit_bc,file=trim(file_bc),status='unknown',IOSTAT=istat)
 
+    read (iunit_bc,*) nbndries
 
-    !-------------------------------------------------------------------------------
-    !
-    !-------------------------------------------------------------------------------
-    !allocate(lnode2cellptr(num_nodes+1))
-    !call findnode2cellmap(cell2node,iwrk1d,node2cellptr,nvermax,num_nodes,num_cells)
-    !ndim=node2cellptr(nnodes+1)-1
-    !allocate(node2cell(ndim))
-    !node2cell(1:ndim)=iwrk1d(1:ndim)
+    allocate(bndry(nbndries))
 
-    !deallocate(iwrk1d, iwrk2d)
-    deallocate(cell2cell_tmp, cell2edge_tmp, cell2node_tmp)
+    do ib=1,nbndries
+      read (iunit_bc,*) bndry(ib)%ncells, bndry(ib)%type
+    enddo
+
+    do ib=1,nbndries
+      allocate( bndry(ib)%cell(bndry(ib)%ncells) )
+      do i=1,bndry(ib)%ncells
+        read (iunit_bc,*) bndry(ib)%cell(i)
+      enddo
+    enddo
+
+    close(iunit_bc)
 
     return
-  end subroutine grid_links
+  end subroutine grid_bc_read
 
 
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grid_props
+  subroutine grid_data
+
     implicit none
-
-    integer                           :: ic,ic1,ic2, ie,ie1,ie2, iv,iv1,iv2, in,in1,in2, nt,i,j,dum1,dum2
-    integer,allocatable               :: iwrk1d(:), iwrk2d(:,:)
-    real                              :: tx,ty,xc,yc,dx,dy, vol,xf,af,nx, r(2)
-    real,allocatable                  :: rwrk2d(:,:)
-    type(kdtree2_result),allocatable	:: fnearest(:)
-    integer                           :: num_nearests
-
-    !--------------------------------------------------------------------------!
-    ! allocation
-    !--------------------------------------------------------------------------!
-    allocate(cell_center(num_cells,2), cell_area(num_cells), cell_dist2vert(num_cells,num_vert_max))
-    allocate(edge_center(num_edges,2), edge_area(num_edges))
-    allocate(edge_normal(num_edges,2), edge_tangnt(num_edges,2), edge_normal_sign(num_cells,num_vert_max) )
+    integer             :: i,j,k,ii,ic,jc,iv,vp, ib
+    integer             :: v1,v2,v3,v4, vL,vR, in,im, ie,je
+    integer             :: idum4(4), tri_v2e(3), qud_v2e(4)
+    integer,allocatable :: locedge(:), idum1(:), idum2(:), idum3(:)
+    real                :: xc,yc, x1,x2,x3,x4, y1,y2,y3,y4, dx,dy, xf,yf, at
+    real,allocatable    :: tmpr(:,:)
+    logical             :: lfound
 
 
     !--------------------------------------------------------------------------!
-    ! determine boundary edges
+    ! cell centroids
     !--------------------------------------------------------------------------!
-    allocate(iwrk1d(num_edges))
-    nt=0;
-    do ie=1,num_edges
-      if (edge2cell(ie,1)*edge2cell(ie,2)==0) then
-        nt=nt+1
-        if (nt>0) iwrk1d(nt)=ie
-      endif
-    end do
-    num_edges_bndry=nt
-    if (nt>0) then
-      allocate(edges_bndry_ptr(nt))
-      edges_bndry_ptr(1:nt)= iwrk1d(1:nt)
-    endif
-    deallocate(iwrk1d)
-
-
-    !--------------------------------------------------------------------------!
-    ! determine boundary nodes
-    !--------------------------------------------------------------------------!
-    allocate(iwrk1d(num_edges*2))
-    nt=0;
-    do ie=1,num_edges
-      if (edge2cell(ie,1)*edge2cell(ie,2)==0) then
-        iv1=edge2node(ie,1)
-        iv2=edge2node(ie,2)
-
-        if (nt==0) then
-          nt=nt+1
-          iwrk1d(nt)=iv1; nt=nt+1
-          iwrk1d(nt)=iv2
-        else
-          dum1=1
-          dum2=1
-          do j=1,nt;
-            dum1=min(dum1,abs(iwrk1d(j)-iv1));
-            dum2=min(dum2,abs(iwrk1d(j)-iv2));
-          enddo
-          if (dum1/=0) then
-            nt=nt+1
-            iwrk1d(nt)=iv1
-          endif
-          if (dum2/=0) then
-            nt=nt+1
-            iwrk1d(nt)=iv2
-          endif
-        endif
-      endif
-    end do
-    num_nodes_bndry=nt
-    if (nt>0) then
-      allocate(nodes_bndry_ptr(nt))
-      nodes_bndry_ptr(1:nt)= iwrk1d(1:nt)
-    endif
-    deallocate(iwrk1d)
-
-
-    !--------------------------------------------------------------------------!
-    ! determine boundary cells
-    !--------------------------------------------------------------------------!
-    allocate(iwrk1d(num_cells))
-    nt=0;
-    do ic=1,num_cells
-      if (cell2cell(ic,1)*cell2cell(ic,2)*cell2cell(ic,3)==0) then
-        nt=nt+1
-        if (nt>0) iwrk1d(nt)=ic;
-      endif
-    end do
-    num_cells_bndry=nt
-    if (nt>0) then
-      allocate(cells_bndry_ptr(nt))
-      cells_bndry_ptr(1:nt)= iwrk1d(1:nt)
-    endif
-    deallocate(iwrk1d)
-
-
-    !--------------------------------------------------------------------------!
-    ! compute cell center (works for triangle for now)
-    !--------------------------------------------------------------------------!
-    do ic=1,num_cells
-      xc=0.d0;
-      yc=0.d0;
-      do iv=1,num_vert_cell(ic)
-        xc = xc + cell_vert(cell2node(ic,iv),1)
-        yc = yc + cell_vert(cell2node(ic,iv),2)
+    do ic=1,ncells_tri
+      xc=0.d0
+      yc=0.d0
+      do iv=1,3
+        vp = cell(ic)%node(iv)
+        xc = xc + node(vp)%x
+        yc = yc + node(vp)%y
       enddo
-      cell_center(ic,1)=xc/dble(num_vert_cell(ic))
-      cell_center(ic,2)=yc/dble(num_vert_cell(ic))
-    enddo
-
-
-    !--------------------------------------------------------------------------!
-    ! compute edge center and area
-    !--------------------------------------------------------------------------!
-    do ie=1,num_edges
-      iv1=edge2node(ie,1)
-      iv2=edge2node(ie,2)
-      edge_center(ie,1)=( cell_vert(iv1,1) + cell_vert(iv2,1) ) / 2.d0
-      edge_center(ie,2)=( cell_vert(iv1,2) + cell_vert(iv2,2) ) / 2.d0
-
-      dx=cell_vert(iv1,1) - cell_vert(iv2,1)
-      dy=cell_vert(iv1,2) - cell_vert(iv2,2)
-      edge_area(ie)=dsqrt(dx**2 + dy**2)
-    enddo
-
-
-    !--------------------------------------------------------------------------!
-    ! compute edge normal
-    !--------------------------------------------------------------------------!
-    do ie=1,num_edges
-      iv1=edge2node(ie,1)
-      iv2=edge2node(ie,2)
-      dx=cell_vert(iv2,1) - cell_vert(iv1,1)
-      dy=cell_vert(iv2,2) - cell_vert(iv1,2)
-      tx=dx/edge_area(ie)
-      ty=dy/edge_area(ie)
-
-      edge_normal(ie,1)= ty
-      edge_normal(ie,2)=-tx
-      edge_tangnt(ie,1)= tx
-      edge_tangnt(ie,2)= ty
+      cell(ic)%x = xc/3.d0
+      cell(ic)%y = yc/3.d0
     end do
+
+    do i=1,ncells_quad
+      ic = ncells_tri + i
+      xc=0.d0
+      yc=0.d0
+      do iv=1,4
+        vp = cell(ic)%node(iv)
+        xc = xc + node(vp)%x
+        yc = yc + node(vp)%y
+      enddo
+      cell(ic)%x = xc/4.d0
+      cell(ic)%y = yc/4.d0
+    end do
+
+
+    !--------------------------------------------------------------------------!
+    ! cell volume
+    !--------------------------------------------------------------------------!
+    do ic=1,ncells_tri
+      x1=node(cell(ic)%node(1))%x;  y1=node(cell(ic)%node(1))%y;
+      x2=node(cell(ic)%node(2))%x;  y2=node(cell(ic)%node(2))%y;
+      x3=node(cell(ic)%node(3))%x;  y3=node(cell(ic)%node(3))%y;
+      cell(ic)%vol=tri_area(x1,x2,x3,y1,y2,y3)
+    enddo
+    do i=1,ncells_quad
+      ic=i+ncells_tri
+      x1=node(cell(ic)%node(1))%x;  y1=node(cell(ic)%node(1))%y;
+      x2=node(cell(ic)%node(2))%x;  y2=node(cell(ic)%node(2))%y;
+      x3=node(cell(ic)%node(3))%x;  y3=node(cell(ic)%node(3))%y;
+      x4=node(cell(ic)%node(4))%x;  y4=node(cell(ic)%node(4))%y;
+      cell(ic)%vol= tri_area(x1,x2,x3,y1,y2,y3) + tri_area(x1,x3,x4,y1,y3,y4)
+    enddo
+
+
+    !--------------------------------------------------------------------------!
+    ! compute effective distance, error
+    !--------------------------------------------------------------------------!
+    at = 0.d0
+    do ic=1,ncells
+      at = at + cell(ic)%vol
+    enddo
+    heff1 = sqrt(at/dble(ncells))
+
+    at = 0.d0
+    do ic=1,ncells
+      at = at + sqrt(cell(ic)%vol)
+    enddo
+    heff2 = at/dble(ncells)
+
+
+    !--------------------------------------------------------------------------!
+    ! build k-d tree based on cell vertices
+    !--------------------------------------------------------------------------!
+    allocate(tmpr(2,nnodes))
+    do i=1,nnodes
+      tmpr(1,i)=node(i)%x
+      tmpr(2,i)=node(i)%y
+    enddo
+    tree_cellvert => kdtree2_create(tmpr,sort=.true.,rearrange=.true.)
+    deallocate(tmpr)
+
+
+    !--------------------------------------------------------------------------!
+    ! build k-d tree based on cell centers
+    !--------------------------------------------------------------------------!
+    allocate(tmpr(2,ncells))
+    do i=1,ncells
+      tmpr(1,i)=cell(i)%x
+      tmpr(2,i)=cell(i)%y
+    enddo
+    tree_cellcntr => kdtree2_create(tmpr,sort=.true.,rearrange=.true.)
+    deallocate(tmpr)
+
+
+    !--------------------------------------------------------------------------!
+    ! count number pf cells around a node/vertice and allocate node2cell
+    !--------------------------------------------------------------------------!
+    node(1:nnodes)%ncells = 0
+    do ic=1,ncells
+      do iv=1,cell(ic)%nvrt
+        vp = cell(ic)%node(iv)
+        node(vp)%ncells = node(vp)%ncells + 1
+      enddo
+    enddo
+
+    do i=1,nnodes
+      allocate(node(i)%cell(node(i)%ncells));
+    enddo
+
+
+    !--------------------------------------------------------------------------!
+    ! build node to cell link
+    !--------------------------------------------------------------------------!
+    node(1:nnodes)%ncells = 0
+    do ic=1,ncells
+      do iv=1,cell(ic)%nvrt
+        vp = cell(ic)%node(iv)
+        node(vp)%ncells = node(vp)%ncells + 1
+        node(vp)%cell(node(vp)%ncells) = ic
+      enddo
+    enddo
+
+
+    !--------------------------------------------------------------------------!
+    ! Find edge-neighbor of each cell
+    !            o                               o
+    !           . \                            .   \
+    !          .   \                          .      \
+    !         .  2  \                        .    7   \
+    !     v1 .       \ v3                v3 .           \ v2
+    !       o---------o                   o--------------o---o
+    !     .  \       / \                 / \            /     \
+    !    .    \  ic /   \               /   \    ic    /       \
+    !   .  5   \   /  8  \             /  9  \        /    12   \
+    !  .        \ /       \           /       \      /           \
+    ! o----------o---------o         o---------o====o-------------o
+    !            v2                           v4    v1
+    !..........................................................................
+    ! cell(ic)%nghbr = 3              cell(ic)%nghbr = 4
+    ! cell(ic)%nghbr(v1) = 8          cell(ic)%nghbr(v1) = 9
+    ! cell(ic)%nghbr(v2) = 2          cell(ic)%nghbr(v2) = 0 (boundary)
+    ! cell(ic)%nghbr(v3) = 5          cell(ic)%nghbr(v3) = 12
+    !                                 cell(ic)%nghbr(v4) = 7
+    !..........................................................................
+    ! cell(ic)%nghbre(e1) = 5         cell(ic)%nghbre(e1) = 12
+    ! cell(ic)%nghbre(e2) = 8         cell(ic)%nghbre(e2) = 7
+    ! cell(ic)%nghbre(e3) = 2         cell(ic)%nghbre(e3) = 9
+    !                                 cell(ic)%nghbre(e4) = 0 (boundary)
+    !--------------------------------------------------------------------------!
+    do ic=1,ncells
+      cell(ic)%nnghbrs=cell(ic)%nvrt
+      allocate(cell(ic)%nghbr(cell(ic)%nvrt));
+    enddo
+
+    cells: do ic=1,ncells
+      cell_nvrt: do iv=1,cell(ic)%nvrt
+        if (iv  < cell(ic)%nvrt) vL = cell(ic)%node(iv+1)
+        if (iv == cell(ic)%nvrt) vL = cell(ic)%node(1)
+                                 vR = cell(ic)%node(iv)
+
+        !--Loop over the surrounding cells of node vR and find cell neighbor from them
+        lfound = .false.
+        cells_around_vR : do j = 1, node(vR)%ncells
+          jc = node(vR)%cell(j)
+          edge_matching : do ii = 1, cell(jc)%nvrt
+            if (ii  > 1) v2 = cell(jc)%node(ii-1)
+            if (ii == 1) v2 = cell(jc)%node(cell(jc)%nvrt)
+                         v1 = cell(jc)%node(ii)
+
+            if (v1==vR .and. v2==vL) then
+              lfound = .true.
+              im = ii+1
+              if (im > cell(jc)%nvrt) im = im - cell(jc)%nvrt
+              exit edge_matching
+            endif
+          end do edge_matching
+
+          if (lfound) exit cells_around_vR
+        end do cells_around_vR
+
+        in = iv + 2
+        if (in > cell(ic)%nvrt) in = in - cell(ic)%nvrt
+
+        if (lfound) then
+          cell(ic)%nghbr(in) = jc
+          cell(jc)%nghbr(im) = ic
+        else
+          cell(ic)%nghbr(in) = 0
+        endif
+      end do cell_nvrt
+    end do cells
+
+
+    !--------------------------------------------------------------------------!
+    ! assign neighbor cell number of local edge(ie) of cell(ic)
+    !--------------------------------------------------------------------------!
+    !-- triangle cells
+    allocate(locedge(3));  locedge(1)=2;  locedge(2)=3;  locedge(3)=1;
+    do ic=1,ncells_tri
+      allocate(cell(ic)%nghbre(cell(ic)%nvrt))
+      cell(ic)%nghbre(:)=0
+      do k=1,cell(ic)%nvrt
+        ie=locedge(k)
+        cell(ic)%nghbre(ie) = cell(ic)%nghbr(k)
+      enddo
+    enddo
+
+    !-- quad cells
+    deallocate(locedge)
+    allocate(locedge(4));  locedge(1)=3;  locedge(2)=4;  locedge(3)=1;  locedge(4)=2
+    do i=1,ncells_quad
+      ic=i+ncells_tri
+      allocate(cell(ic)%nghbre(cell(ic)%nvrt))
+      cell(ic)%nghbre(:)=0
+      do k=1,cell(ic)%nvrt
+        ie=locedge(k)
+        cell(ic)%nghbre(ie) = cell(ic)%nghbr(k)
+      enddo
+    enddo
+    deallocate(locedge)
+
+
+    !--------------------------------------------------------------------------!
+    ! count number of edges and allocate edge array
+    !--------------------------------------------------------------------------!
+    nedges=0
+    do ic = 1, ncells
+      do j=1,cell(ic)%nnghbrs
+        if (cell(ic)%nghbr(j)>ic .or. cell(ic)%nghbr(j)==0) nedges = nedges + 1
+      enddo
+    enddo
+    allocate(edge(nedges))
+
+
+    !--------------------------------------------------------------------------!
+    ! assign edge two end nodes (n1/n2), and left and right cells (c1/c2)
+    !--------------------------------------------------------------------------!
+    nedges=0
+    edge(:)%c1 = 0
+    edge(:)%c2 = 0
+    !--triangle cells
+    do ic = 1, ncells_tri
+      v1=cell(ic)%node(1)
+      v2=cell(ic)%node(2)
+      v3=cell(ic)%node(3)
+
+      if ( cell(ic)%nghbr(3) > ic  .or. cell(ic)%nghbr(3)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v1
+        edge(nedges)%n2 = v2
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(3)
+      endif
+
+      if ( cell(ic)%nghbr(1) > ic .or. cell(ic)%nghbr(1)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v2
+        edge(nedges)%n2 = v3
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(1)
+      endif
+
+      if ( cell(ic)%nghbr(2) > ic .or. cell(ic)%nghbr(2)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v3
+        edge(nedges)%n2 = v1
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(2)
+      endif
+    enddo
+
+    !--quad cells
+    do i = 1, ncells_quad
+      ic=ncells_tri + i
+      v1=cell(ic)%node(1)
+      v2=cell(ic)%node(2)
+      v3=cell(ic)%node(3)
+      v4=cell(ic)%node(4)
+
+      if ( cell(ic)%nghbr(3) > ic  .or. cell(ic)%nghbr(3)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v1
+        edge(nedges)%n2 = v2
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(3)
+      endif
+
+      if ( cell(ic)%nghbr(4) > ic  .or. cell(ic)%nghbr(4)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v2
+        edge(nedges)%n2 = v3
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(4)
+      endif
+
+      if ( cell(ic)%nghbr(1) > ic .or. cell(ic)%nghbr(1)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v3
+        edge(nedges)%n2 = v4
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(1)
+      endif
+
+      if ( cell(ic)%nghbr(2) > ic .or. cell(ic)%nghbr(2)==0 ) then
+        nedges = nedges + 1
+        edge(nedges)%n1 = v4
+        edge(nedges)%n2 = v1
+        edge(nedges)%c1 = ic
+        edge(nedges)%c2 = cell(ic)%nghbr(2)
+      endif
+    enddo
+
+
+    !--------------------------------------------------------------------------!
+    ! assign cell index to edge
+    !--------------------------------------------------------------------------!
+    tri_v2e(1)=2;  tri_v2e(2)=3;  tri_v2e(3)=1;
+    qud_v2e(1)=3;  qud_v2e(2)=4;  qud_v2e(3)=1;  qud_v2e(4)=2
+
+    do ic=1,ncells
+      allocate(cell(ic)%edge(cell(ic)%nvrt))
+    enddo
+
+    nedges=0
+    !--triangle cells
+    do ic = 1, ncells_tri
+      if ( cell(ic)%nghbr(3) > ic  .or. cell(ic)%nghbr(3)==0 ) then
+        nedges = nedges + 1
+        cell(ic)%edge(1)= nedges
+      else
+        jc=cell(ic)%nghbr(3)
+        idum4 = 0
+        if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+        if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+        tlp1: do k=1,cell(jc)%nvrt !3
+          if (cell(jc)%nghbr(k)==ic) then
+            ie=idum4(k) !locedge(k)
+            cell(ic)%edge(1)=cell(jc)%edge(ie)
+            exit tlp1
+          endif
+        enddo tlp1
+      endif
+
+      if ( cell(ic)%nghbr(1) > ic .or. cell(ic)%nghbr(1)==0 ) then
+       nedges = nedges + 1
+       cell(ic)%edge(2)= nedges
+     else
+       jc=cell(ic)%nghbr(1)
+       idum4 = 0
+       if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+       if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+       tlp2: do k=1,cell(jc)%nvrt !3
+         if (cell(jc)%nghbr(k)==ic) then
+           ie=idum4(k) !locedge(k)
+           cell(ic)%edge(2)=cell(jc)%edge(ie)
+           exit tlp2
+         endif
+       enddo tlp2
+      endif
+
+      if ( cell(ic)%nghbr(2) > ic .or. cell(ic)%nghbr(2)==0 ) then
+       nedges = nedges + 1
+       cell(ic)%edge(3)= nedges
+     else
+       jc=cell(ic)%nghbr(2)
+       idum4 = 0
+       if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+       if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+       tlp3: do k=1,cell(jc)%nvrt !3
+         if (cell(jc)%nghbr(k)==ic) then
+           ie=idum4(k) !locedge(k)
+           cell(ic)%edge(3)=cell(jc)%edge(ie)
+           exit tlp3
+         endif
+       enddo tlp3
+      endif
+    enddo
+
+    !--quad cells
+    do i = 1, ncells_quad
+      ic=ncells_tri + i
+      if ( cell(ic)%nghbr(3) > ic  .or. cell(ic)%nghbr(3)==0 ) then
+        nedges = nedges + 1
+        cell(ic)%edge(1)= nedges
+      else
+        jc=cell(ic)%nghbr(3)
+        idum4 = 0
+        if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+        if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+        qlp1: do k=1,cell(jc)%nvrt !4
+          if (cell(jc)%nghbr(k)==ic) then
+            ie=idum4(k) !locedge(k)
+            cell(ic)%edge(1)=cell(jc)%edge(ie)
+            exit qlp1
+          endif
+        enddo qlp1
+      endif
+
+      if ( cell(ic)%nghbr(4) > ic  .or. cell(ic)%nghbr(4)==0 ) then
+        nedges = nedges + 1
+        cell(ic)%edge(2)= nedges
+      else
+        jc=cell(ic)%nghbr(4)
+        idum4 = 0
+        if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+        if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+        qlp2: do k=1,cell(jc)%nvrt !4
+          if (cell(jc)%nghbr(k)==ic) then
+            ie=idum4(k) !locedge(k)
+            cell(ic)%edge(2)=cell(jc)%edge(ie)
+            exit qlp2
+          endif
+        enddo qlp2
+      endif
+
+      if ( cell(ic)%nghbr(1) > ic .or. cell(ic)%nghbr(1)==0 ) then
+        nedges = nedges + 1
+        cell(ic)%edge(3)= nedges
+      else
+        jc=cell(ic)%nghbr(1)
+        idum4 = 0
+        if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+        if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+        qlp3: do k=1,cell(jc)%nvrt !4
+          if (cell(jc)%nghbr(k)==ic) then
+            ie=idum4(k) !locedge(k)
+            cell(ic)%edge(3)=cell(jc)%edge(ie)
+            exit qlp3
+          endif
+        enddo qlp3
+      endif
+
+      if ( cell(ic)%nghbr(2) > ic .or. cell(ic)%nghbr(2)==0 ) then
+        nedges = nedges + 1
+        cell(ic)%edge(4)= nedges
+      else
+        jc=cell(ic)%nghbr(2)
+        idum4 = 0
+        if (cell(jc)%nvrt==3) idum4(1:3) = tri_v2e(1:3)
+        if (cell(jc)%nvrt==4) idum4(1:4) = qud_v2e(1:4)
+        qlp4: do k=1,cell(jc)%nvrt !4
+          if (cell(jc)%nghbr(k)==ic) then
+            ie=idum4(k) !locedge(k)
+            cell(ic)%edge(4)=cell(jc)%edge(ie)
+            exit qlp4
+          endif
+        enddo qlp4
+      endif
+    enddo
+
+
+    !--------------------------------------------------------------------------!
+    ! compute edge center, area, normal, and tangential vectors
+    !--------------------------------------------------------------------------!
+    do i=1,nedges
+      v1=edge(i)%n1
+      v2=edge(i)%n2
+
+      dx=node(v2)%x - node(v1)%x
+      dy=node(v2)%y - node(v1)%y
+
+      edge(i)%area = dsqrt(dx**2+dy**2)
+
+      edge(i)%x = 0.5d0*(node(v1)%x + node(v2)%x)
+      edge(i)%y = 0.5d0*(node(v1)%y + node(v2)%y)
+
+      edge(i)%nx = dy/edge(i)%area
+      edge(i)%ny =-dx/edge(i)%area
+
+      edge(i)%tx = dx/edge(i)%area
+      edge(i)%ty = dy/edge(i)%area
+    enddo
+
+
+    !--------------------------------------------------------------------------!
+    ! build position vector from cell center to cell-edges
+    !--------------------------------------------------------------------------!
+    do ic=1,ncells
+      xc=cell(ic)%x
+      yc=cell(ic)%y
+      allocate(cell(ic)%pos2edg(cell(ic)%nvrt,2))
+      do ie=1,cell(ic)%nvrt
+        je=cell(ic)%edge(ie)
+
+        xf=edge(je)%x
+        yf=edge(je)%y
+
+        cell(ic)%pos2edg(ie,1) = xf-xc
+        cell(ic)%pos2edg(ie,2) = yf-yc
+      enddo
+    enddo
 
 
     !--------------------------------------------------------------------------!
     ! compute edge normal direction for each cell
     !--------------------------------------------------------------------------!
-    do ic=1,num_cells
-      do ie=1,num_vert_cell(ic)
-        ie1=cell2edge(ic,ie)
-        ic1=edge2cell(ie1,1)
-        if (ic==ic1) then
-          edge_normal_sign(ic,ie)=+1.d0
-        else
-          edge_normal_sign(ic,ie)=-1.d0
-        endif
+    do ic=1,ncells_tri
+      allocate(cell(ic)%nrmlsign(3))
+      cell(ic)%nrmlsign(1:3)=1.d0
+      do ie=1,cell(ic)%nvrt
+        je=cell(ic)%edge(ie)
+        jc=edge(je)%c1
+        if (ic/=jc) cell(ic)%nrmlsign(ie)=-1.d0
+      enddo
+    enddo
+
+    do i=1,ncells_quad
+      ic=i+ncells_tri
+      allocate(cell(ic)%nrmlsign(4))
+      cell(ic)%nrmlsign(1:4)=1.d0
+      do ie=1,cell(ic)%nvrt
+        je=cell(ic)%edge(ie)
+        jc=edge(je)%c1
+        if (ic/=jc) cell(ic)%nrmlsign(ie)=-1.d0
       enddo
     enddo
 
 
     !--------------------------------------------------------------------------!
-    ! compute cell volume
+    ! determine interior cells and check #s boundary cells
     !--------------------------------------------------------------------------!
-    do ic=1,num_cells
+    if (allocated(idum1)) deallocate(idum1)
+    if (allocated(idum2)) deallocate(idum2)
+    allocate(idum1(ncells), idum2(ncells))
+    idum1(:)=0
+    idum2(:)=0
+    ncells_intr = 0
+    ncells_bndr = 0
+    do ic=1,ncells
+      im=1
+      do ie=1,cell(ic)%nvrt
+        if (cell(ic)%nghbre(ie)==0) im=0
+      enddo
+      if (im==1) then
+        ncells_intr = ncells_intr + 1
+        idum1(ncells_intr) = ic
+      else
+        ncells_bndr = ncells_bndr + 1
+        idum2(ncells_bndr) = ic
+      endif
+    enddo
+    allocate(cell_intr(ncells_intr))
+    allocate(cell_bndr(ncells_bndr))
+    cell_intr(1:ncells_intr) = idum1(1:ncells_intr)
+    cell_bndr(1:ncells_bndr) = idum2(1:ncells_bndr)
+
+    if (ncells_bndr /= sum(bndry(1:nbndries)%ncells)) then
+      write(*,*) '#s of boundary cells determined:', ncells_bndr
+      write(*,*) '#s of boundary cells via .bc file:',sum(bndry(1:nbndries)%ncells)
+      write(*,*) '#s of boundary cells does not match'
+      write(*,*) 'error in mod: grid_procs, sub: grid_data'
+      stop
+    endif
+
+    !--------------------------------------------------------------------------!
+    ! determine interior and boundary edges
+    !--------------------------------------------------------------------------!
+    if (allocated(idum1)) deallocate(idum1)
+    if (allocated(idum2)) deallocate(idum2)
+    if (allocated(idum3)) deallocate(idum3)
+    allocate(idum1(nedges), idum2(nedges), idum3(nedges))
+    idum1(:)=0
+    idum2(:)=0
+    idum3(:)=0
+    nedges_intr = 0
+    nedges_bndr = 0
+    do ie=1,nedges
+      if (edge(ie)%c1 ==0 .and. edge(ie)%c2 >0) then
+        nedges_bndr = nedges_bndr + 1
+        idum1(nedges_bndr) = ie
+        idum3(nedges_bndr) = edge(ie)%c2
+      elseif (edge(ie)%c1 >0 .and. edge(ie)%c2 ==0) then
+        nedges_bndr = nedges_bndr + 1
+        idum1(nedges_bndr) = ie
+        idum3(nedges_bndr) = edge(ie)%c1
+      elseif  (edge(ie)%c1 >0 .and. edge(ie)%c2 >0) then
+        nedges_intr = nedges_intr + 1
+        idum2(nedges_intr) = ie
+      else
+        write(*,*) 'no way !!!'
+      endif
+    enddo
+    allocate(edge_intr(nedges_intr))
+    allocate(edge_bndr(nedges_bndr))
+    allocate(bedge_cell(nedges_bndr))
+    edge_bndr(1:nedges_bndr) = idum1(1:nedges_bndr)
+    edge_intr(1:nedges_intr) = idum2(1:nedges_intr)
+    bedge_cell(1:nedges_bndr) = idum3(1:nedges_bndr)
+
+    do ib=1,nbndries
+      bndry(ib)%nedges = 0
+      idum3 = 0
+      do i=1,bndry(ib)%ncells
+        ic=bndry(ib)%cell(i)
+        do ie=1,cell(ic)%nvrt
+          je=cell(ic)%edge(ie)
+          if (edge(je)%c1 ==ic .and. edge(je)%c2 ==0) then
+            bndry(ib)%nedges = bndry(ib)%nedges + 1
+            idum3(bndry(ib)%nedges) = je
+          elseif (edge(je)%c1 ==0 .and. edge(je)%c2 ==ic) then
+            bndry(ib)%nedges = bndry(ib)%nedges + 1
+            idum3(bndry(ib)%nedges) = je
+          endif
+        enddo
+      enddo
+      allocate(bndry(ib)%edge( bndry(ib)%nedges ))
+      bndry(ib)%edge(1:bndry(ib)%nedges) = idum3(1:bndry(ib)%nedges)
+    enddo
+
+    if (nedges_bndr /= sum(bndry(1:nbndries)%nedges)) then
+      write(*,*) '#s of boundary edges determined:', nedges_bndr
+      write(*,*) '#s of boundary edges read:',sum(bndry(1:nbndries)%nedges)
+      write(*,*) '#s of boundary edges/faces does not match'
+      write(*,*) 'error in mod: grid_procs, sub: grid_data'
+      stop
+    endif
+
+    return
+  end subroutine grid_data
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  function tri_area(x1,x2,x3,y1,y2,y3) result(area)
+    implicit none
+    real, intent(in) :: x1,x2,x3,y1,y2,y3
+    real :: area
+
+    area = 0.5d0*( x1*(y2-y3) + x2*(y3-y1) + x3*(y1-y2) )
+
+    return
+  end function tri_area
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine grid_data_verify
+    implicit none
+
+    integer   :: i,j, ic,in,iv,ie, jc,je, istat, ib
+    real      :: vol,vol1,vol2, xf,nx,af, xc,yc
+    character :: charbc*1
+
+    !--------------------------------------------------------------------------!
+    ! compare computed aread with Green theorem
+    !--------------------------------------------------------------------------!
+    vol1 = 0.d0
+    do ic=1,ncells
+      vol1 = vol1 + cell(ic)%vol
+    enddo
+
+    vol2= 0.d0
+    do ic=1,ncells
       vol=0.d0
-      do iv=1,3
-        ie=cell2edge(ic,iv)
-        nx= edge_normal(ie,1) * edge_normal_sign(ic,iv)
-        xf= edge_center(ie,1)
-        af= edge_area(ie)
+      do ie=1,cell(ic)%nvrt
+        je=cell(ic)%edge(ie)
+        nx= edge(je)%nx * cell(ic)%nrmlsign(ie)
+        xf= edge(je)%x
+        af= edge(je)%area
         vol = vol +  nx*xf*af
       enddo
-        cell_area(ic) = vol
+      vol2 = vol2 + vol
     enddo
 
-
     !--------------------------------------------------------------------------!
-    ! compute distance between cell center and cell vertices
+    ! check edge 2 cell index
     !--------------------------------------------------------------------------!
-    do ic=1,num_cells
-      do iv=1,num_vert_cell(ic)
-        in=cell2node(ic,iv)
-        dx = cell_vert(in,1) - cell_center(ic,1)
-        dy = cell_vert(in,2) - cell_center(ic,2)
-        cell_dist2vert(ic,iv)=dsqrt (dx**2 + dy**2)
-      enddo
-    enddo
-
-
-    !--------------------------------------------------------------------------!
-    ! compute distance between cell center and edge center
-    !--------------------------------------------------------------------------!
-    do ic=1,num_cells
-      do iv=1,num_vert_cell(ic)
-        in=cell2node(ic,iv)
-        !dx = cell_vert(in,1) - cell_center(ic,1)
-        !dy = cell_vert(in,2) - cell_center(ic,2)
-        !cell_dist2edgecenter(ic,iv)=dsqrt (dx**2 + dy**2)
-      enddo
-    enddo
-
-
-    !--------------------------------------------------------------------------!
-    ! initialize k-d tree based on cell centers
-    !--------------------------------------------------------------------------!
-    allocate(rwrk2d(2,num_cells))
-    do i=1,num_cells
-      rwrk2d(1:2,i)=cell_center(i,1:2)
-    enddo
-    tree_cellcntr => kdtree2_create(rwrk2d,sort=.true.,rearrange=.true.)
-    deallocate(rwrk2d)
-
-
-    !--------------------------------------------------------------------------!
-    ! determine number of surrounding cells of each node
-    !--------------------------------------------------------------------------!
-    allocate(node2cell_ntot(num_nodes))
-    node2cell_ntot(:) = 0
-    do ic=1,num_cells
-      do iv=1,num_vert_cell(ic)
-        iv1=cell2node(ic,iv)
-        node2cell_ntot(iv1) = node2cell_ntot(iv1) + 1
-      enddo
-    enddo
-
-
-    !--------------------------------------------------------------------------!
-    ! compute pointer and number of cells surrounding each node
-    ! step-1: find "num_nearests" cell centers w.r.t node "iv"
-    ! step-2: check if each found cell has the same node "iv"
-    ! do i=node2cell_ptr(iv), node2cell_ptr(iv) + node2cell_ntot(iv) - 1
-    !    ic=node2cell(i) ---> return cell numbers surrounding node "iv"
-    ! enddo
-    !--------------------------------------------------------------------------!
-    num_nearests=10
-    allocate(fnearest(num_nearests))
-    allocate(iwrk1d(num_nodes),iwrk2d(num_nodes,12))
-    iwrk2d(:,:)=0
-    iwrk1d(:)=0
-    do ic=1,num_cells
-      do in=1,num_vert_cell(ic)
-        nt=0
-        iv=cell2node(ic,in)
-        r(1:2)=cell_vert(iv,1:2)
-        if (iwrk1d(iv)==0) then
-          call kdtree2_n_nearest(tp=tree_cellcntr,qv=r,nn=num_nearests,results=fnearest)
-          do i=1,num_nearests
-            ic1=fnearest(i)%idx
-            if (ic1==ic) then
-              nt=nt+1
-              iwrk2d(iv,nt)=ic1
-            elseif (cell2node(ic1,1)==iv .or. cell2node(ic1,2)==iv .or. cell2node(ic1,3)==iv) then
-              nt=nt+1
-              iwrk2d(iv,nt)=ic1
-            endif
-          enddo
-          iwrk1d(iv)=1
-        endif
-      enddo
-    enddo
-
-    do i=1,num_nodes
-      nt=0
-      do j=1,num_nearests
-        if (iwrk2d(i,j)>0) then
-          nt=nt+1
-        endif
-      enddo
-      if (node2cell_ntot(i)/=nt) then
-        write(*,*) 'check number of neighbours',i
+    do ie=1,nedges
+      ic = edge(ie)%c1
+      if (ic<=0) then
+        write(*,*) 'edge(ie)%c1 <=0 at edge no.',ie
+        write(*,*) 'stopped at mod: grid_procs, sub: grid_data_verify'
+        stop 'error'
       endif
     enddo
 
-    nt=sum(node2cell_ntot)
-    allocate(node2cell_ptr(num_nodes), node2cell(nt))
-    node2cell_ptr(1)=1
-    do i=2,num_nodes
-      node2cell_ptr(i) = node2cell_ptr(i-1) + node2cell_ntot(i-1)
-    enddo
+    !--------------------------------------------------------------------------!
+    ! write out grid information
+    !--------------------------------------------------------------------------!
+    if (proc_id==0) then
+      open(iunit_log_grid,file=trim(file_log_grid),status='unknown',IOSTAT=istat)
 
-    do i=1,num_nodes
-      nt=0
-      do j=node2cell_ptr(i), node2cell_ptr(i) + node2cell_ntot(i) - 1
-        nt=nt+1
-        if (iwrk2d(i,nt)>0) node2cell(j)=iwrk2d(i,nt)
+      write(iunit_log_grid,*)
+      write(iunit_log_grid,'(a45,i0)') 'number of nodes: ',nnodes
+      write(iunit_log_grid,'(a45,i0)') 'number of triangle cells: ',ncells_tri
+      write(iunit_log_grid,'(a45,i0)') 'number of quadrilateral cells: ',ncells_quad
+      write(iunit_log_grid,'(a45,i0)') 'number of total cells: ',ncells
+      write(iunit_log_grid,'(a45,i0)') 'number of total edges: ',nedges
+      write(iunit_log_grid,'(a45,i0)') 'number of total bondary edges: ',nedges_bndr
+      write(iunit_log_grid,'(a45,i0)') 'number of total bondary cells: ',ncells_bndr
+
+      write(iunit_log_grid,*)
+      write(iunit_log_grid,'(a44,en20.11)') " Sum of the cell volumes via numerical cal:", vol1
+      write(iunit_log_grid,'(a44,en20.11)') " Sum of the cell volumes via Green theorem:", vol2
+      write(iunit_log_grid,'(a45,en20.11)') 'min cell volume: ',minval(cell(1:ncells)%vol)
+      write(iunit_log_grid,'(a45,en20.11)') 'max cell volume: ',maxval(cell(1:ncells)%vol)
+
+      write(iunit_log_grid,*)
+      write(iunit_log_grid,'(a,en20.11)') " cell effective length, sqrt[sum(vol)/ncells]:", heff1
+      write(iunit_log_grid,'(a,en20.11)') " cell effective length, sum[sqrt(vol)]/ncells:", heff2
+    endif
+
+
+    !--------------------------------------------------------------------------!
+    ! write out cell normals
+    !--------------------------------------------------------------------------!
+    if (proc_id==0 .and. lcheck_grid) then
+      open(iunit_log_grid,file='log_grid_cell_normals.plt', status='unknown',IOSTAT=istat)
+      write(iunit_log_grid,'(a)') 'VARIABLES ="x", "y", "nx", "ny"'
+      do ic=1,ncells
+        do ie=1,cell(ic)%nvrt
+          je=cell(ic)%edge(ie)
+          xc=edge(je)%nx * cell(ic)%nrmlsign(ie)
+          yc=edge(je)%ny * cell(ic)%nrmlsign(ie)
+          write(iunit_log_grid,'(4(e16.8,1x))') cell(ic)%x, cell(ic)%y, xc, yc
+        enddo
       enddo
-    enddo
-    deallocate(iwrk1d, iwrk2d)
+      close(iunit_log_grid)
+    endif
+
+    !--------------------------------------------------------------------------!
+    ! write out cell normals
+    !--------------------------------------------------------------------------!
+    if (proc_id==0 .and. lcheck_grid) then
+      do ib=1,nbndries
+        write(charbc,'(i1)') ib
+        open(iunit_log_grid,file=trim('log_bndry'//charbc//'.plt'), status='unknown',IOSTAT=istat)
+        write(iunit_log_grid,'(a)') 'VARIABLES ="x", "y", "nx", "ny"'
+        do i=1,bndry(ib)%nedges
+          ie=bndry(ib)%edge(i)
+          write(iunit_log_grid,*) edge(ie)%x, edge(ie)%y, edge(ie)%nx, edge(ie)%ny
+          !write(iunit_log_grid,*) node(edge(ie)%n1)%x, node(edge(ie)%n1)%y
+          !write(iunit_log_grid,*) node(edge(ie)%n2)%x, node(edge(ie)%n2)%y
+        enddo
+        close(iunit_log_grid)
+      enddo
+
+      ! open(iunit_log_grid,file=trim('2d_bndry.plt'), status='unknown',IOSTAT=istat)
+      ! write(iunit_log_grid,*) nbndries
+      ! do ib=1,nbndries
+      !    write(iunit_log_grid,*) bndry(ib)%nedges+1
+      ! enddo
+      ! do ib=1,nbndries
+      !   do i=1,bndry(ib)%nedges
+      !     ie=bndry(ib)%edge(i)
+      !     ! n1=edge(ie)%n1
+      !     ! n2=edge(ie)%n2
+      !     write(iunit_log_grid,*)  edge(ie)%n1 !, node(edge(ie)%n1)%x, node(edge(ie)%n1)%y
+      !   enddo
+      !   ie=bndry(ib)%edge(1)
+      !   write(iunit_log_grid,*) edge(ie)%n1 !, node(edge(ie)%n1)%x, node(edge(ie)%n1)%y
+      ! enddo
+      ! close(iunit_log_grid)
+    endif
+
 
     return
-  end subroutine grid_props
+  end subroutine grid_data_verify
 
 end module grid_procs
