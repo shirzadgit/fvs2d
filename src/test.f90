@@ -25,10 +25,10 @@ contains
 
     allocate(fve(nnodes), fce(ncells), dfve(nnodes,2), dfce(ncells,2))
 
-    call verify_vortex
-    return
+    !call verify_vortex
+    !return
 
-    call test_analytic
+    !call test_analytic
     !
     !call test_tec
     !
@@ -501,10 +501,10 @@ contains
       do i=1,ncells_intr
         ic = cell_intr(i)
 
-        l2(ivar) = l2(ivar) + ( resid(ivar,ic)+mms_source(ivar,ic) )**2
-        linf(ivar) = max( linf(ivar), abs( resid(ivar,ic)+mms_source(ivar,ic) ) )
+        l2(ivar) = l2(ivar) + ( resid(ivar,ic) + mms_source(ivar,ic) )**2
+        linf(ivar) = max( linf(ivar), abs( resid(ivar,ic) + mms_source(ivar,ic) ) )
       enddo
-      l2(ivar) = dsqrt(l2(ivar))/dble(ncells_intr)
+      l2(ivar) = dsqrt(l2(ivar)/dble(ncells_intr))
     enddo
 
     fout='error_resid.plt'
@@ -515,7 +515,7 @@ contains
       open(100, file=trim(fout), status="new", action="write")
       write(100,'(a)')  'variables = "h<sub>eff" "L<sub>2,rho" "L<sub>2,u"   "L<sub>2,v"  "L<sub>2,e"  "L<sub>inf,rho" "L<sub>inf,u"   "L<sub>inf,v"  "L<sub>inf,e"    '
     end if
-
+    heff= sqrt(sum(cell%vol)/dble(ncells))
     write(100,'(9(e16.9,1x))') heff,(l2(ivar),ivar=1,4),(linf(ivar),ivar=1,4)
 
     ! write(*,'(a)')  '       heff           err_max           err_l2           err_max           err_l2'
@@ -524,7 +524,7 @@ contains
 
     call interpolate_cell2node(resid(1:1,1:ncells),wrk1)
     call interpolate_cell2node(mms_source(1:1,1:ncells),wrk3)
-    wrk2(:,1)=abs(wrk1(:)-wrk3(:))
+    wrk2(:,1)=wrk1(:) !abs(wrk1(:)-wrk3(:))
     wrk2(:,2)=wrk3(:)
     fout='test_resid_rho.plt'
     if (ncells_quad==0) call test_tecplot (fout,2,wrk2)
@@ -533,7 +533,7 @@ contains
 
     call interpolate_cell2node(resid(2:2,1:ncells),wrk1)
     call interpolate_cell2node(mms_source(2:2,1:ncells),wrk3)
-    wrk2(:,1)=abs(wrk1(:)-wrk3(:))
+    wrk2(:,1)=wrk1(:) !abs(wrk1(:)-wrk3(:))
     wrk2(:,2)=wrk3(:)
     fout='test_resid_u.plt'
     if (ncells_quad==0) call test_tecplot (fout,2,wrk2)
@@ -541,7 +541,7 @@ contains
 
     call interpolate_cell2node(resid(3:3,1:ncells),wrk1)
     call interpolate_cell2node(mms_source(3:3,1:ncells),wrk3)
-    wrk2(:,1)=abs(wrk1(:)-wrk3(:))
+    wrk2(:,1)=wrk1(:) !abs(wrk1(:)-wrk3(:))
     wrk2(:,2)=wrk3(:)
     fout='test_resid_v.plt'
     if (ncells_quad==0) call test_tecplot (fout,2,wrk2)
@@ -549,7 +549,7 @@ contains
 
     call interpolate_cell2node(resid(4:4,1:ncells),wrk1)
     call interpolate_cell2node(mms_source(4:4,1:ncells),wrk3)
-    wrk2(:,1)=abs(wrk1(:)-wrk3(:))
+    wrk2(:,1)=wrk1(:) !abs(wrk1(:)-wrk3(:))
     wrk2(:,2)=wrk3(:)
     fout='test_resid_e.plt'
     if (ncells_quad==0) call test_tecplot (fout,2,wrk2)

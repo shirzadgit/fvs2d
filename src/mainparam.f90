@@ -13,6 +13,7 @@ module mainparam
 
   !-- cput time
   real,save               :: cput_grad=0.d0, cput_lim=0.d0, cput_flux=0.d0
+  real,save               :: cput_rk=0.d0
 
   !--
   logical,parameter       :: lcheck_grid=.false.

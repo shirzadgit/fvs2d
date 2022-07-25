@@ -79,26 +79,26 @@ contains
     !-- Density    = cr0 + crs*sin(crx*x+cry*y)
     cr0 =  1.12
     crs =  0.15
-    crx =  8.d0*pi/(xmax-xmin) !3.12*pi
-    cry =  7.d0*pi/(xmax-xmin) !2.92*pi
+    crx =  3.12*pi  !8.d0*pi/(xmax-xmin) !
+    cry =  2.92*pi  !7.d0*pi/(xmax-xmin) !
 
     !-- u-velocity = cu0 + cus*sin(cux*x+cuy*y)
     cu0 =  1.32
     cus =  0.06
-    cux =  6.5d0*pi/(xmax-xmin) !2.09*pi
-    cuy =  8.0d0*pi/(xmax-xmin) !3.12*pi
+    cux =  2.09*pi !6.5d0*pi/(xmax-xmin) !
+    cuy =  3.12*pi !8.0d0*pi/(xmax-xmin) !
 
     !-- v-velocity = cv0 + cvs*sin(cvx*x+cvy*y)
     cv0 =  1.18
     cvs =  0.03
-    cvx =  7.2d0*pi/(xmax-xmin) !2.15*pi
-    cvy =  8.2d0*pi/(xmax-xmin) !3.32*pi
+    cvx =  2.15*pi !7.2d0*pi/(xmax-xmin) !
+    cvy =  3.32*pi !8.2d0*pi/(xmax-xmin) !
 
     !-- pressure   = cp0 + cps*sin(cpx*x+cpy*y)
     cp0 =  1.62
     cps =  0.31
-    cpx =  7.8d0*pi/(xmax-xmin) !3.79*pi
-    cpy =  6.8d0*pi/(xmax-xmin) !2.98*pi
+    cpx =  3.79*pi !7.8d0*pi/(xmax-xmin) !
+    cpy =  2.98*pi !6.8d0*pi/(xmax-xmin) !
 
     !--------------------------------------------------------------------------!
     ! compute manufactured solution and source terms for 2-D Euler
@@ -111,7 +111,7 @@ contains
       call mms_compute_euler2d (cell(ic)%x, cell(ic)%y, mms_sol(1:nvar,ic), mms_source(1:nvar,ic))
 
       !-- integrate over volume
-      mms_source(1:nvar,ic) = mms_source(1:nvar,ic) * cell(ic)%vol
+      mms_source(1:nvar,ic) = mms_source(1:nvar,ic) !!!* cell(ic)%vol
     enddo
 
     return

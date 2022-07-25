@@ -122,8 +122,8 @@ program fvs2d
   !----------------------------------------------------------------------------!
   ! test operators
   !----------------------------------------------------------------------------!
-  !call test_init
-  !stop 'ok'
+  call test_init
+  stop 'ok'
 
   !----------------------------------------------------------------------------!
   ! start time integration
@@ -174,9 +174,11 @@ program fvs2d
   !----------------------------------------------------------------------------!
   write(*,*) '------------------------------------------------------------------'
   if (cputot<999.d0*60.d0) then
-      write(*,'(4(a,f7.3))') ' cpu-time(min): total=',cputot/min, ', grad=',cput_grad/min,', flux=',cput_flux/min,', limiter=',cput_lim/min
+      write(*,'(5(a,f7.3))') &
+      ' cpu-time(min): total=',cputot/min, ', grad=',cput_grad/min,', flux=',cput_flux/min,', limiter=',cput_lim/min, ', R-K=',cput_rk/min
   else
-      write(*,'(4(a,f7.3))') ' cpu-time(hr): total=' ,cputot/hr , ', grad=',cput_grad/hr, ', flux=',cput_flux/hr, ', limiter=',cput_lim/hr
+      write(*,'(5(a,f7.3))') &
+      ' cpu-time(hr): total=' ,cputot/hr , ', grad=',cput_grad/hr, ', flux=',cput_flux/hr, ', limiter=',cput_lim/hr,  ', R-K=',cput_rk/hr
   endif
   write(*,*)
 

@@ -1,6 +1,4 @@
-src/*.mod
-src/*.o
 src/obsolete/
-libs/
-run/
-utils/
+libs/not_used/
+build/
+not_used/
