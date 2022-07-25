@@ -12,6 +12,7 @@ program gambit
   type bndry_type
     integer                       :: ncells
     integer,dimension(:),pointer  :: cell
+    character(len=39)             :: type
   end type bndry_type
   type(bndry_type),dimension(:),pointer :: bndry
 
@@ -98,11 +99,13 @@ program gambit
     do i=1,2; read(100,*); enddo
 
     read(100,'(a39,i1,4x,i4)') char39,idum1,bndry(ib)%ncells
+    bndry(ib)%type=trim(adjustl(char39))
     allocate(bndry(ib)%cell( bndry(ib)%ncells ))
     do i=1,bndry(ib)%ncells
       read(100,*) bndry(ib)%cell(i)
     enddo
 
+    write(*,'(a,i0,a,a )') 'boundary(',ib,')%type   = ',(bndry(ib)%type)
     write(*,'(a,i0,a,i0)') 'boundary(',ib,')%ncells = ',bndry(ib)%ncells
   enddo
   close(100)
@@ -153,7 +156,7 @@ program gambit
   open(100,file=trim(file_in)//".bc")
   write(100,'(i0,18x,a)') nbcs,'!--- number of boundaries'
   do ib=1,nbcs
-    write(100,'(i0,3x,a,4x,a,i0,a)') bndry(ib)%ncells,'dirichlet', '!--- boundary ',ib,' : #ncells, type'
+    write(100,'(i0,3x,a,4x,a,i0,a)') bndry(ib)%ncells,trim(bndry(ib)%type), '!--- boundary ',ib,' : #ncells, type'
   enddo
   do ib=1,nbcs
     do j=1,bndry(ib)%ncells
