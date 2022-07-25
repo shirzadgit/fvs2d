@@ -1,6 +1,6 @@
 module runge_kutta
 
-  use mainparam,      only  : nvar, iunit_res, file_res
+  use mainparam,      only  : nvar, iunit_res, file_res, cput_rk
   use input,          only  : rk_nstages, rk_order, lSSPRK, lvortex, dt, cfl_user, lsteady, lwrite_resid, ntstart
   use data_grid,      only  : ncells, cell
   use data_solution,  only  : cvar, resid, ws_nrml, ir,iu,iv,ip
@@ -13,7 +13,7 @@ module runge_kutta
   private
   real,allocatable,save   :: rk_coef(:),h_rk(:),dts(:),dte(:), dt_local(:)
   integer,save            :: istep_rk,icont, iter
-  real,save               :: cput_drdt, cput_uvwetc
+  real,save               :: cput_drdt, cput_uvwetc, cput1, cput2
 
   public  :: runge_kutta_init,istep_rk,cput_drdt,cput_uvwetc,time_integration
 
@@ -152,7 +152,7 @@ contains
       do rk=1,rk_nstages
 
         call compute_residual (tstart(rk));
-
+        cput1 = MPI_WTIME()
         fcvar(1:nvar, 1:ncells) = fcvar(1:nvar, 1:ncells) + rk_coef(rk) * resid(1:nvar, 1:ncells)
 
         if (rk<rk_nstages) then
@@ -160,7 +160,7 @@ contains
         elseif (rk==rk_nstages) then
           cvar(1:nvar, 1:ncells) = cvar0(1:nvar, 1:ncells) + h_rk(rk) * fcvar(1:nvar, 1:ncells)
         endif
-
+        cput2 = MPI_WTIME(); cput_rk = cput2 - cput1 + cput_rk
       enddo
 
       if (lvortex) call error_isentropic_vortex(tnew)
@@ -375,6 +375,7 @@ contains
         tend  = told + dte(rk)
 
         call compute_residual(tstart)
+        cput1 = MPI_WTIME();
         if (rk==1) call compute_local_time
 
         cst=1.d0/3.d0
@@ -384,7 +385,7 @@ contains
         enddo
 
         fcvar(1:nvar, 1:ncells) = fcvar(1:nvar, 1:ncells) + resid(1:nvar, 1:ncells)
-
+        cput2 = MPI_WTIME(); cput_rk = cput2 - cput1 + cput_rk
       enddo
 
       if (lvortex) call error_isentropic_vortex(tend)
