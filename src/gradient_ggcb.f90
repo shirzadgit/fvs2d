@@ -1,16 +1,23 @@
 module gradient_ggcb
 
-  use grid_procs
-  use interpolation
+  use mainparam,      only  : nvar
+  use data_grid
+  use data_solution,  only  : pvar,grad
 
   implicit none
 
   private
-  integer,allocatable,save  :: grad_ggcb_ptr(:,:)
-  real,allocatable,save     :: grad_ggcb_coef0(:,:), grad_ggcb_coefnb(:,:,:)
+
+  type ggcb_type
+    integer,dimension(:),pointer  :: ptr
+    real,dimension(:),pointer     :: coef0
+    real,dimension(:,:),pointer   :: coefnb
+  end type ggcb_type
+
+  type(ggcb_type),dimension(:),pointer  :: ggcb
 
   private :: setup
-  public  :: grad_ggcb_init, grad_ggcb
+  public  :: grad_ggcb_init, grad_ggcb, grad_ggcb_1var
 
 contains
 
@@ -23,7 +30,7 @@ contains
     !--------------------------------------------------------------------------!
     ! allocate
     !--------------------------------------------------------------------------!
-    allocate( grad_ggcb_ptr(num_cells,num_vert_max), grad_ggcb_coef0(num_cells,2), grad_ggcb_coefnb(num_cells,num_vert_max,2))
+    allocate(ggcb(ncells))
 
 
     !--------------------------------------------------------------------------!
@@ -41,28 +48,34 @@ contains
   subroutine setup
     implicit  none
 
-    integer     :: i,j, ic,ic1,ic2, ie,ie1,ie2, in,iv,iv1,iv2
+    integer     :: i,j, ic,ic1,ic2, ie,ie1,ie2, je, in,iv,iv1,iv2
     real        :: af,nxf,nyf, xf,yf, xc,yc, xc1,yc1, dx,dy, d0,d1
 
 
-    grad_ggcb_coef0(:,:)=0.d0
-    grad_ggcb_coefnb(:,:,:)=0.d0
+    do ic=1,ncells
+      xc=cell(ic)%x
+      yc=cell(ic)%y
 
-    do ic=1,num_cells
-      xc=cell_center(ic,1)
-      yc=cell_center(ic,2)
-      do ie=1,num_vert_cell(ic)
-        ie1=cell2edge(ic,ie)
+      allocate(ggcb(ic)%ptr(cell(ic)%nvrt))
+      allocate(ggcb(ic)%coef0(2))
+      allocate(ggcb(ic)%coefnb(cell(ic)%nvrt,2))
 
-        ic1=edge2cell(ie1,1)
-        ic2=edge2cell(ie1,2)
+      ggcb(ic)%ptr(1:cell(ic)%nvrt)=0
+      ggcb(ic)%coef0(1:2)=0.d0
+      ggcb(ic)%coefnb(1:cell(ic)%nvrt,1:2)=0.d0
 
-        af =edge_area(ie1)
-        nxf=edge_normal(ie1,1) * edge_normal_sign(ic,ie)
-        nyf=edge_normal(ie1,2) * edge_normal_sign(ic,ie)
+      do ie=1,cell(ic)%nvrt
+        je=cell(ic)%edge(ie)
 
-        xf=edge_center(ie1,1)
-        yf=edge_center(ie1,2)
+        ic1=edge(je)%c1
+        ic2=edge(je)%c2
+
+        af =edge(je)%area
+        nxf=edge(je)%nx * cell(ic)%nrmlsign(ie)
+        nyf=edge(je)%ny * cell(ic)%nrmlsign(ie)
+
+        xf=edge(je)%x
+        yf=edge(je)%y
 
         dx=xf-xc
         dy=yf-yc
@@ -70,25 +83,26 @@ contains
 
         xc1=xc
         yc1=yc
-        grad_ggcb_ptr(ic,ie)=ic
+        ggcb(ic)%ptr(ie)=ic
         if (ic1>0 .and. ic1/=ic) then
-          xc1=cell_center(ic1,1)
-          yc1=cell_center(ic1,2)
-          grad_ggcb_ptr(ic,ie)=ic1
+          xc1=cell(ic1)%x
+          yc1=cell(ic1)%y
+          ggcb(ic)%ptr(ie)=ic1
         elseif (ic2>0 .and. ic2/=ic) then
-          xc1=cell_center(ic2,1)
-          yc1=cell_center(ic2,2)
-          grad_ggcb_ptr(ic,ie)=ic2
+          xc1=cell(ic2)%x
+          yc1=cell(ic2)%y
+          ggcb(ic)%ptr(ie)=ic2
         endif
 
         dx=xf-xc1
         dy=yf-yc1
         d1=dsqrt(dx**2+dy**2)
 
-        grad_ggcb_coef0(ic,1)  = grad_ggcb_coef0(ic,1) + d1/(d0+d1)*nxf*af
-        grad_ggcb_coef0(ic,2)  = grad_ggcb_coef0(ic,2) + d1/(d0+d1)*nyf*af
-        grad_ggcb_coefnb(ic,ie,1) = d0/(d0+d1)*nxf*af
-        grad_ggcb_coefnb(ic,ie,2) = d0/(d0+d1)*nyf*af
+        ggcb(ic)%coef0(1) = ggcb(ic)%coef0(1) + d1/(d0+d1)*nxf*af
+        ggcb(ic)%coef0(2) = ggcb(ic)%coef0(2) + d1/(d0+d1)*nyf*af
+        ggcb(ic)%coefnb(ie,1) = d0/(d0+d1)*nxf*af
+        ggcb(ic)%coefnb(ie,2) = d0/(d0+d1)*nyf*af
+
       enddo
     enddo
 
@@ -99,31 +113,56 @@ contains
   !============================================================================!
   !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
   !============================================================================!
-  subroutine grad_ggcb (fc,dfc)
+  subroutine grad_ggcb
+
     implicit  none
+    integer           :: i,j, ic,ic1, ie,ie1, in,iv,iv1,iv2, ivar
 
-    real,intent(in)   :: fc(num_cells)
-    real,intent(out)  :: dfc(num_cells,2)
-    integer           :: i,j, ic,ic1, ie,ie1, in,iv,iv1,iv2, nt
-    real              :: af,nxf,nyf
-    real,allocatable  :: fv(:)
+    grad = 0.d0
 
-    dfc(:,:)=0.d0
-
-    do ic=1,num_cells
-      dfc(ic,1)= grad_ggcb_coef0(ic,1) * fc(ic)
-      dfc(ic,2)= grad_ggcb_coef0(ic,2) * fc(ic)
-      do ie=1,num_vert_cell(ic)
-        ic1=grad_ggcb_ptr(ic,ie)
-        dfc(ic,1) = dfc(ic,1) + grad_ggcb_coefnb(ic,ie,1)*fc(ic1)
-        dfc(ic,2) = dfc(ic,2) + grad_ggcb_coefnb(ic,ie,2)*fc(ic1)
+    do ivar=1,nvar
+      do ic=1,ncells
+        grad(ivar,ic,1)= ggcb(ic)%coef0(1) * pvar(ivar,ic)
+        grad(ivar,ic,2)= ggcb(ic)%coef0(2) * pvar(ivar,ic)
+        do ie=1,cell(ic)%nvrt
+          ic1=ggcb(ic)%ptr(ie)
+          grad(ivar,ic,1) = grad(ivar,ic,1) + ggcb(ic)%coefnb(ie,1)*pvar(ivar,ic1)
+          grad(ivar,ic,2) = grad(ivar,ic,2) + ggcb(ic)%coefnb(ie,2)*pvar(ivar,ic1)
+        end do
+        grad(ivar,ic,1) = grad(ivar,ic,1)/cell(ic)%vol
+        grad(ivar,ic,2) = grad(ivar,ic,2)/cell(ic)%vol
       end do
-      dfc(ic,1) = dfc(ic,1)/cell_area(ic)
-      dfc(ic,2) = dfc(ic,2)/cell_area(ic)
-    end do
-
+    enddo
 
     return
   end subroutine grad_ggcb
+
+
+  !============================================================================!
+  !\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\!
+  !============================================================================!
+  subroutine grad_ggcb_1var (fc,dfc)
+    implicit  none
+
+    real,intent(in)   :: fc(ncells)
+    real,intent(out)  :: dfc(ncells,2)
+    integer           :: i,j, ic,ic1, ie,ie1, in,iv,iv1,iv2, nt
+
+    dfc(:,:)=0.d0
+
+    do ic=1,ncells
+      dfc(ic,1)= ggcb(ic)%coef0(1) * fc(ic)
+      dfc(ic,2)= ggcb(ic)%coef0(2) * fc(ic)
+      do ie=1,cell(ic)%nvrt
+        ic1=ggcb(ic)%ptr(ie)
+        dfc(ic,1) = dfc(ic,1) + ggcb(ic)%coefnb(ie,1)*fc(ic1)
+        dfc(ic,2) = dfc(ic,2) + ggcb(ic)%coefnb(ie,2)*fc(ic1)
+      end do
+      dfc(ic,1) = dfc(ic,1)/cell(ic)%vol
+      dfc(ic,2) = dfc(ic,2)/cell(ic)%vol
+    end do
+
+    return
+  end subroutine grad_ggcb_1var
 
 end module gradient_ggcb
