@@ -38,7 +38,7 @@ add_subdirectory(src)
 
 
 #add directory for libraries
-add_subdirectory(libs/BLAS)
+add_subdirectory(libs/blas)
 
 
 #print some info for user
