@@ -2,3 +2,7 @@ src/obsolete/
 libs/not_used/
 build/
 not_used/
+utils/omesh/*.plt
+utils/omesh/*.grid
+utils/omesh/*.bc
+utils/omesh/*.png
