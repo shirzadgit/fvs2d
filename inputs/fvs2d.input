@@ -11,11 +11,11 @@ vortex    --- Grid base file name without extension (code requires "*.grid" and 
 4000      --- Number of total time-steps: ntimes
 40        --- Number of output solutions: nsaves ---> write out every [ntimes/nsaves] time-steps
 1         --- Starting time-step: ntstart ---> t_init=(ntstart-1)*dt; (if >1 --> solver will need cont.cd/s8 files; 0--> MMS)
-F,2.0			--- compute steady flow, CFL number
+F,2.0     --- compute steady flow, CFL number
 F         --- compute isentropic vortex: T/F (if T, code requires fvs2d.vortex file)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-F,F,T,F		--- Output variables(T/F): rho, u, v, p
-s4				--- Format for transient output files: s4/s8 (single/double precision)
+F,F,T,F	  --- Output variables(T/F): rho, u, v, p
+s4        --- Format for transient output files: s4/s8 (single/double precision)
 ===========================================================================================================================================
 	Temporal & Spatial Discretization Schemes
 ===========================================================================================================================================
